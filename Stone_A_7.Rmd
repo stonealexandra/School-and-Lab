@@ -1,0 +1,121 @@
+---
+title: "Stone_A_7.Rmd"
+author: "Alexandra Stone"
+date: "October 16, 2019"
+output:
+  pdf_document: 
+    latex_engine: xelatex
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+#Assignment 7
+
+##Pick at least 2 web scraping toolkits (either automated tools like Import.io or R packages such as rvest) and try to use them to extract data from the Yelp website. In particular, create a search in Yelp to find good burger restaurants in the Boston area. You must try out at least two toolkits, but you will use only one to actually extract and save the full data.
+```{r}
+#set working directory and load necessary libraries
+#setwd("c:/Users/user/Desktop/Data Mining")
+library(rvest)
+library(selectr)
+library(dplyr)
+
+#1st page
+# Store web url
+yelp <- read_html("https://www.yelp.com/search?find_desc=burgers&find_loc=Boston%2C%20MA&ns=1&l=p%3AMA%3ABoston%3A%3A%5BAllston%2FBrighton%2CBack_Bay%2CBeacon_Hill%2CDowntown%2CFenway%2CSouth_End%2CWest_End%5D")
+
+#get addresses  
+addressesYelp<-yelpsr %>% 
+    html_nodes(".text-align--right__373c0__3ARv7 .lemon--span__373c0__3997G") %>%
+    html_text(trim=T)
+addressesYelp<-addressesYelp[-1]
+
+#get names 
+namesYelp<- yelp %>% 
+    html_nodes(".text-color--black-regular__373c0__38bRH .link-size--inherit__373c0__2JXk5") %>% 
+    html_text(trim=T)
+namesYelp<-namesYelp[-1]
+
+#get names 
+countsYelp<- yelp %>% 
+    html_nodes(".reviewCount__373c0__2r4xT") %>% 
+    html_text(trim=T)
+countsYelp<-countsYelp[-1]
+
+#get stars 
+starsYelp<- yelp %>% 
+    html_nodes("div.overflow--hidden__373c0__8Jq2I") %>% 
+    html_attr("aria-label")
+starsYelp<-starsYelp[-1:-3]
+
+#get neighborhood
+neighborhoodYelp<- yelp %>% 
+    html_nodes(".u-space-b1 .border-color--default__373c0__2oFDT .border-color--default__373c0__2oFDT .text-align--right__373c0__3ARv7") %>% 
+    html_text(trim=T)
+
+#get review snippets
+reviewYelp<-yelp %>% 
+    html_nodes(".alternateStyling__373c0__2ithU") %>% 
+    html_text(trim=T)
+reviewYelp<-reviewYelp[-1]
+
+#get service categories
+categoryYelp<-yelp %>% 
+    html_nodes(".display--inline__373c0__1DbOG .border-color--default__373c0__2oFDT:nth-child(1) .link-size--default__373c0__1skgq") %>% 
+    html_text(trim=T)
+categoryYelp<-categoryYelp[2:31]
+
+#Import the data you extracted into a data frame in R. Your data frame should have exactly 30 rows, and each row represents a burger restaurant in Boston.
+
+#bind data into dataframe
+yelpDF<- cbind.data.frame(namesYelp, addressesYelp, neighborhoodYelp, starsYelp, countsYelp, reviewYelp, categoryYelp)
+colnames(yelpDF)<-c("name", "address", "neighborhood", "stars", "counts", "review", "category" )
+
+#export dataframe as csv
+write.csv(yelpDF, file = "yelpBurgers.csv")
+
+#2nd page
+#yelp2 <- read_html("https://www.yelp.com/search?find_desc=burgers&find_loc=Boston%2C%20MA&ns=1&l=p%3AMA%3ABoston%3A%3A%5BAllston%2FBrighton%2CBack_Bay%2CBeacon_Hill%2CDowntown%2CFenway%2CSouth_End%2CWest_End%5D&start=30")
+
+#3rd page
+#yelp3 <- read_html("https://www.yelp.com/search?find_desc=burgers&find_loc=Boston%2C%20MA&ns=1&l=p%3AMA%3ABoston%3A%3A%5BAllston%2FBrighton%2CBack_Bay%2CBeacon_Hill%2CDowntown%2CFenway%2CSouth_End%2CWest_End%5D&start=60")
+```
+
+##Write a report that compares the tools with a focus on cost, ease of use, features, and your recommendation. Discuss your experience with the tools and why you decided to use the one you picked in the end. Use screenshots of toolkits and your scraping process to support your statements.  Also include a screenshot or an excerpt of your data in the report.
+
+The tools I used were import.io and rvest.  rvest was pretty straight forward.  You load the package and write scripts to extract data.  In order to find the CSS selector, I used SelectorGadget.  The data wanted is hovered over and clicked and SelectorGadget provides the CSS selector.  Data can be removed by clicking it and highlighting it red.  It was quick and easy to use.
+
+![an image caption Source: SelectorGadget.](images/selectorGadget.jpg)
+
+```{r}
+#dataframe from the data extracted using SelectorGadget
+yelpDF
+```
+
+
+import.io had the advantage of having a click and remove option on their website.  However, it was slow and even when edited through the click and remove method, the data exported, did not always reflect that.  
+
+![an image caption Source: click and extract importio.](images/clickExtract.jpg)
+
+After clicking and removing some of the unwanted rows, this is what a preview looks like for the second yelp page.
+![an image caption Source: second yelp page with some data removed.](images/secondpage.jpg)
+
+Even after removing the unwanted ads from the first yelp page, the ads were still not removed.  It can take a couple of tries and waiting a few minutes between each piece of data you want removed.
+![an image caption Source: with ads.](images/withAds.jpg)
+
+##Within your report describe what you have derived about the URL for yelp pages. What are the differences between the three URLs? What are the parameters that determined your search query (Boston burger restaurants in 8 selected neighborhoods)? What is(are) the parameter(s) used for pagination? Without opening Yelp.com in the browser, what is your guess of the URL for the 7th page of Chinese restaurants in New York?
+
+1st page
+https://www.yelp.com/search?find_desc=burgers&find_loc=Boston%2C%20MA&ns=1&l=p%3AMA%3ABoston%3A%3A%5BAllston%2FBrighton%2CBack_Bay%2CBeacon_Hill%2CDowntown%2CFenway%2CSouth_End%2CWest_End%5D
+
+2nd page
+https://www.yelp.com/search?find_desc=burgers&find_loc=Boston%2C%20MA&ns=1&l=p%3AMA%3ABoston%3A%3A%5BAllston%2FBrighton%2CBack_Bay%2CBeacon_Hill%2CDowntown%2CFenway%2CSouth_End%2CWest_End%5D&start=30
+
+3rd page
+https://www.yelp.com/search?find_desc=burgers&find_loc=Boston%2C%20MA&ns=1&l=p%3AMA%3ABoston%3A%3A%5BAllston%2FBrighton%2CBack_Bay%2CBeacon_Hill%2CDowntown%2CFenway%2CSouth_End%2CWest_End%5D&start=60
+
+The differences between the three URLs is the "&start=" at the end.  The first page does not have it at the end whereas the second and third pages do followed by the count which the restaurants are starting at.  Since they are grouped in 30s, it is 30 and 60.  The parameters for the search are burgers, Boston MA and the neighborhoods specified.  I would expect the URL for the 7th page of Chinese restaurants in New York to be:
+
+https://www.yelp.com/search?find_desc=chinese&find_loc=NewYork%2C%20NY&ns=1&l=p%3AMA%3ANewYork&start=210

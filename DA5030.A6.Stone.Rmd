@@ -1,0 +1,196 @@
+---
+title: "DA5030.A6.Stone"
+author: "Alexandra Stone"
+date: "October 25, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+##Problem 1 (60 Points)
+###Download the data set on student achievement in secondary education math education of two Portuguese schools (use the data set Students Math). Using any packages you wish, complete the following tasks
+
+Before starting on tasks, download datasets
+```{r cars}
+students_Math=read.table("C:/Users/user/Desktop/Skeet/Spring 2018/Stats/Module07/student/student-mat.csv",sep=";",header=TRUE)
+
+
+```
+
+1. Create scatter plots and pairwise correlations between four continuous variables and the final grade (G3) using the pairs.panels() function in R. Pick the variables you believe are most useful.
+```{r}
+library(psych)
+pairs.panels(students_Math[c("age", "absences", "G1", "G2", "G3")])
+```
+2. Build a multiple regression model predicting final math grade (G3) using as many features as you like but you must use at least four. Include at least one categorical variables and be sure to properly convert it to dummy codes. Select the features that you believe are useful -- you do not have to include all features.
+ 
+```{r}
+#explore dataset
+summary(students_Math)
+
+#use G1, G2, studytime, internet, schoolsup, guardian
+library(stats)
+student_model<-lm(G3 ~ G1 + G2 + studytime + internet + schoolsup +  guardian, data = students_Math)
+student_model
+```
+3. Use stepwise backward elimination to remove all non-significant variables and then state the final model as an equation. State the backward elimination measure you applied (p-value, AIC, Adjusted R2)
+ 
+```{r}
+summary(student_model)
+
+#look for highest pvalue/pvalue that is not significant, then eliminate and run the model again.  The highest p value is internet so eliminate then run again
+student_model<-lm(G3 ~ G1 + G2 + studytime +  schoolsup +  guardian, data = students_Math)
+summary(student_model)
+
+#look for the highest pvalue/pvalue that is not significant. The highest pvalue would be guardian
+student_model<-lm(G3 ~ G1 + G2 + studytime +  schoolsup, data = students_Math)
+summary(student_model)
+
+#look for the highest pvalue/pvalue that is not significant, which is studytime
+student_model<-lm(G3 ~ G1 + G2 + schoolsup, data = students_Math)
+summary(student_model) #schoolsup pvalue increases
+
+#look for the highest pvalue/pvalue that is not significant, which is schoolsup
+student_model<-lm(G3 ~ G1 + G2, data = students_Math)
+
+#final model
+student_model<-lm(G3 ~ G1 + G2, data = students_Math)
+
+#assign summary to variable and look at coefficients to build equation
+sm<-summary(student_model)
+sm$coefficients
+sm$coefficients[[1]]
+
+#write as equation
+#final_grade<-sm$coefficients[[1]] + sm$coefficients[[2]]*G1 + #sm$coefficients[[3]]*G2
+```
+4. Calculate the 95% confidence interval for a prediction -- you may choose any data you wish for some new student.
+ 
+```{r}
+#choose new data for student
+G1<-17
+G2<-18
+new_final_grade<-sm$coefficients[[1]] + sm$coefficients[[2]]*G1 + sm$coefficients[[3]]*G2 #18.54
+
+new_final_grade - 1.96*1.937 #SE from sm
+new_final_grade + 1.96*1.937 #SE from sm
+
+#95 % CI that new final grade is 14.7 and 22.3
+```
+5. What is the RMSE for this model -- use the entire data set for both training and validation
+```{r}
+predicted_sm<-predict(student_model, students_Math[c(31,32)])
+head(predicted_sm)
+sqrerr<-(students_Math[33]-predicted_sm)^2
+meansqerr<-mean(sqrerr)
+rmse<-sqrt(meansqerr)
+rmse
+#rmse is 1.93
+```
+##Problem 2 
+1. Using the same data set as in Problem (1), add another column, PF -- pass-fail. Mark any student whose final grade is less than 10 as F, otherwise as P and then build a dummy code variable for that new column. Use the new dummy variable column as the response variable.
+```{r}
+#create extra column
+students_Math_Pass_Fail<-students_Math
+students_Math_Pass_Fail$PF<-0
+students_Math_Pass_Fail$PF<-ifelse(students_Math_Pass_Fail$G3 < 10, "F", "P")
+
+#dummy coding. if fail F is zero, otherwize P is one
+students_Math_Pass_Fail$PF<-ifelse(students_Math_Pass_Fail$PF == "F", 0, 1)
+```
+2. Build a binomial logistic regression model classifying a student as passing or failing. Eliminate any non-significant variable using an elimination approach of your choice. Use as many features as you like but you must use at least four -- choose the ones you believe are most useful.
+```{r}
+m<-glm(PF ~  G1 + G2 + studytime + internet + schoolsup +  guardian + traveltime + absences, data = students_Math_Pass_Fail, family = binomial)
+summary(m)
+
+#start elimination using pvalue. go one at a time and rerun model
+m<-glm(PF ~  G1 + G2 + studytime + internet + guardian + traveltime + absences, data = students_Math_Pass_Fail, family = binomial)
+summary(m)
+m<-glm(PF ~  G1 + G2 + studytime + guardian + traveltime + absences, data = students_Math_Pass_Fail, family = binomial)
+summary(m)
+m<-glm(PF ~  G1 + G2 + studytime + traveltime + absences, data = students_Math_Pass_Fail, family = binomial)
+summary(m)
+m<-glm(PF ~  G2 + studytime + traveltime + absences, data = students_Math_Pass_Fail, family = binomial)
+summary(m)
+m<-glm(PF ~  G2 + studytime + traveltime , data = students_Math_Pass_Fail, family = binomial)
+summary(m)
+m<-glm(PF ~  G2 + traveltime , data = students_Math_Pass_Fail, family = binomial)
+summary(m)
+```
+3. State the regression equation.
+
+P = 1/(1+e^-(-19.1616 + 1.982 +.6736))
+
+4. What is the accuracy of your model? Use the entire data set for both training and validation.
+```{r}
+library(caret)
+predicted_pass_fail<-predict(m, students_Math_Pass_Fail, type = "response")
+library(ROCR)
+library(Metrics)
+pr<-prediction(predicted_pass_fail, students_Math_Pass_Fail$PF)
+perf <- performance(pr,measure = "tpr",x.measure = "fpr")
+plot(perf) > auc(students_Math_Pass_Fail$PF,predicted_pass_fail)
+```
+##Problem 3 
+
+1. Implement the example from the textbook on pages 205 to 217 for the data set on white wines.
+
+```{r}
+#import files
+library(readr)
+wine <- read_csv("C:/Users/user/Desktop/code files/Machine Learning with R, Second Edition_Code/Chapter 06/whitewines.csv")
+
+#explore dataset
+str(wine)
+
+#histogram
+hist(wine$quality)
+
+#split into training and test data
+wine_train<-wine[1:3750,]
+wine_test<-wine[3751:4898,]
+
+library(rpart)
+
+#specify quality as the outcome variable and the rest as predictors
+m.rpart<-rpart(quality ~., data = wine_train)
+m.rpart
+
+library(rpart.plot)
+rpart.plot(m.rpart, digits = 3)
+rpart.plot(m.rpart, digits = 4, fallen.leaves = TRUE, type = 3, extra = 101)
+p.rpart<-predict(m.rpart, wine_test)
+cor(p.rpart, wine_test$quality)
+
+#mean absolute error
+MAE<-function(actual, predicted) {
+  mean(abs(actual - predicted))
+}
+MAE(p.rpart, wine_test$quality)
+mean(wine_train$quality)
+MAE(5.87, wine_test$quality)
+
+library(RWeka)
+m.m5p<-M5P(quality ~ ., data = wine_train)
+m.m5p
+
+#predict
+p.m5p<-predict(m.m5p, wine_test)
+summary(p.m5p)
+cor(p.m5p, wine_test$quality)
+MAE(wine_test$quality, p.m5p)
+```
+
+2. Calculate the RMSE for the model.
+
+```{r}
+head(p.m5p)
+sqrerr<-(wine_test$quality-p.m5p)^2
+meansqerr<-mean(sqrerr)
+rmse<-sqrt(meansqerr)
+rmse #164.8
+```
+

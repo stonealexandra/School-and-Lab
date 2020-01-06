@@ -1,0 +1,160 @@
+---
+title: "Assignment 7"
+author: "Alexandra Stone"
+date: "November 7, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Problem 1
+
+##Build an R Notebook of the concrete strength example in the textbook on pages 232 to 239. Show each step and add appropriate documentation.
+
+Download data set and view it
+```{r}
+library(readr)
+concrete <- read_csv("C:/Users/user/Desktop/code files/Machine Learning with R, Second Edition_Code/Chapter 07/concrete.csv")
+View(concrete)
+str(concrete)
+```
+Since neural networks work best when the input is scaled to a range near zero we must normalize the data.  Create a normalize function and apply it to every column
+```{r}
+#normalize function
+normalize<-function(x) { return((x - min(x)) / (max(x) - min(x)))}
+
+#lapply
+concrete_norm<-as.data.frame((lapply(concrete, normalize)))
+
+#summary
+summary(concrete_norm$strength)
+```
+Split data into a training and testing set 75:25 respectively
+```{r}
+concrete_train<-concrete_norm[1:773,]
+concrete_test<-concrete_norm[774:1030,]
+```
+Return a neural network object to make predictions.
+```{r}
+#install.packages("neuralnet") and load library
+library(neuralnet)
+
+#Train simplest multilayer feedforward netwokr with a single hidden node
+concrete_model<-neuralnet(strength ~ cement + slag + ash + water + superplastic +coarseagg + fineagg + age, data = concrete_train)
+
+plot(concrete_model)
+```
+Evaluate Performance.
+```{r}
+#use compute to make predictions
+model_results<-compute(concrete_model, concrete_test[1:8])
+predicted_strength<-model_results$net.result
+cor(predicted_strength, concrete_test$strength)
+```
+Improve model
+```{r}
+#increase number of hidden nodes
+concrete_model2<-neuralnet(strength ~ cement + slag + ash + water + superplastic + coarseagg + fineagg + age, data = concrete_train, hidden=5)
+plot(concrete_model2) #Error reduced to 1.9
+#use compute then compare with cor
+model_results2<-compute(concrete_model2, concrete_test[1:8])
+predicted_strength2<-model_results2$net.result
+cor(predicted_strength2, concrete_test$strength) #cor up to .93 
+```
+
+#Problem 2
+##Build an R Notebook of the optical character recognition example in the textbook on pages 249 to 257. Show each step and add appropriate documentation.
+
+Collect data and explore data
+```{r}
+library(readr)
+letters <- read_csv("C:/Users/user/Desktop/code files/Machine Learning with R, Second Edition_Code/Chapter 07/letterdata.csv")
+View(letters)
+summary(letters)
+str(letters)
+
+#We don't need to scale data so interval is small because SVM model will do it automatically
+```
+Create Test and Train data
+```{r}
+letters_train<- letters[1:16000,]
+letters_test<- letters[16001:20000,]
+```
+Train model on data
+```{r}
+library(kernlab)
+letter_classifier<-ksvm(letter ~ ., data = letters_train, kernel = "vanilladot")
+letter_classifier
+
+#use predict to make predictions
+letter_predictions<-predict(letter_classifier, letters_test)
+head(letter_predictions)
+
+#determine how well classifier performed
+table(letter_predictions, letters_test$letter)
+
+#return T or F indicating whether the model's predicted letter matches the actual letter
+agreement<-letter_predictions == letters_test$letter
+table(agreement) 
+prop.table(table(agreement)) #accuracy about 84%
+```
+Use a more complex kernel function to map data into higher dimensional space to see if we can improve model performance. 
+```{r}
+letter_classifier_rbf<-ksvm(letter ~ ., data = letters_train, kernel = "rbfdot")
+
+#make predictions
+letter_predictions_rbf<-predict(letter_classifier_rbf, letters_test)
+agreement_rbf<-letter_predictions_rbf == letters_test$letter
+table(agreement_rbf)
+prop.table(table(agreement_rbf)) #about93 percent accuracy
+```
+
+#Problem 3
+##Build an R Notebook of the grocery store transactions example in the textbook on pages 266 to 284. Show each step and add appropriate documentation.
+
+```{r}
+#install.packages("arules") then load library to read in data into a sparce matrix more suitable for transactional data
+library(arules)
+groceries <- read.transactions("C:/Users/user/Desktop/code files/Machine Learning with R, Second Edition_Code/Chapter 08/groceries.csv", sep = ",")
+summary(groceries)
+inspect(groceries[1:5])
+itemFrequency(groceries[,1:3])
+```
+Produce bar chart to show proportion of transactions containing certain items
+```{r}
+itemFrequencyPlot(groceries, support = 0.1)
+itemFrequencyPlot(groceries, topN = 20)
+```
+Visualize sparse matrix
+```{r}
+image(groceries[1:5])
+image(sample(groceries, 100))
+```
+Train model on data
+```{r}
+apriori(groceries) #default yields zero rules
+groceryrules<-apriori(groceries, parameter = list(support = 0.006, confidence = 0.25, minlen = 2))
+groceryrules #463 rules 
+```
+Evaluate performance
+```{r}
+summary(groceryrules)
+inspect(groceryrules[1:3]) #if...then
+```
+Improve performance
+```{r}
+inspect(sort(groceryrules, by = "lift")[1:5])
+
+#subset provides a method to search for subsets of transactions, items, or rules
+berryrules<-subset(groceryrules, items %in% "berries")
+inspect(berryrules)
+```
+Save to file or df
+```{r}
+write(groceryrules, file = "groceryrules.csv", sep = ",", quote = TRUE, row.names =  FALSE)
+groceryrules_df<-as(groceryrules, "data.frame")
+str(groceryrules_df)
+```
+

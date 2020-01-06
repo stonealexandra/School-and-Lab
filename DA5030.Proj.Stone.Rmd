@@ -1,0 +1,387 @@
+---
+title: "Final Project"
+author: "Alexandra Stone"
+date: "November 28, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+##Introduction
+According to the United States Census Bureau in July 2018, Indonesia ranked fourth for most populated countries with a population of 329,256,465 people (census.gov, 2018).  Between 1976 and 2002, due to an extremely successful family planning initiative, Indonesia saw its fertility rate drop from 5.6 to 2.6 children per woman (Putjuk, 2014).  However, in the last decade, the rate has remained the same and the maternal mortality rate has remained high.  In the last six years, the Indonesian government has taken strides to make their family program more successful.  Not only did Indonesia experience economic growth after lowering their fertility rates, its largest city, Jakarta, has had difficulty coping with the yearly 3.6 percent population growth (Salva, 2017).  Limited public transportation, traffic, a lack of potable water, and a sinking city are just some of the issues that the population is dealing with.  
+
+In order to tailor programs to potential parents and best allocate resources, looking at factors which influence contraception choices is essential.  The following will look at several models and explore which models can best be used to understand contraception choices.    
+
+##Dataset
+
+The dataset is a subset of the 1987 National Indonesia Contraceptive Prevalence Survey.  It is titled "Contraceptive Method Choice" and created and donated by Tjen-Sien Lim.  The dataset contains samples of married women who are either not pregnant or do not know if they are pregnant at the time of the interview and the contraception method the use.  It is available through UCI's Machine Learning Repository.  
+
+https://archive.ics.uci.edu/ml/datasets/Contraceptive+Method+Choice
+
+Data Folder:
+https://archive.ics.uci.edu/ml/machine-learning-databases/cmc/cmc.data
+
+Data Description:
+https://archive.ics.uci.edu/ml/machine-learning-databases/cmc/cmc.names
+
+##Data Understanding
+According to the Data Description section in the UCI Machine Learning Repository, the variables/attributes in the dataset are:
+
+Attribute Information:
+
+   1. Wife's age                     (numerical)
+   2. Wife's education               (categorical)      1=low, 2, 3, 4=high
+   3. Husband's education            (categorical)      1=low, 2, 3, 4=high
+   4. Number of children ever born   (numerical)
+   5. Wife's religion                (binary)           0=Non-Islam, 1=Islam
+   6. Wife's now working?            (binary)           0=Yes, 1=No
+   7. Husband's occupation           (categorical)      1, 2, 3, 4
+   8. Standard-of-living index       (categorical)      1=low, 2, 3, 4=high
+   9. Media exposure                 (binary)           0=Good, 1=Not good
+   10. Contraceptive method used     (class attribute)  1=No-use 
+                                                        2=Long-term
+                                                        3=Short-term
+
+##Data Exploration                                                        
+
+  As previously mentioned, the dataset and its description is available through UCI's Machine Learning Repository.  
+```{r}
+library(readr)
+contraception_df <- read_csv("https://archive.ics.uci.edu/ml/machine-learning-databases/cmc/cmc.data", col_names = FALSE)
+```
+
+It contains 1473 cases with 10 attributes.  It does not contain any column headers so they can be added.
+
+```{r}
+#add column names
+colnames(contraception_df)<- c("w_age", "w_ed", "h_ed", "num_ch", "w_rel", "w_wrk", "h_job", "s_o_l", "med_exp", "c_m_u")
+summary(contraception_df)
+```
+
+The dataset contains numerical, categorical and binary variables as stated in the data description.
+
+Attribute Information:
+
+   1. Wife's age                     (numerical)
+   2. Wife's education               (categorical)      1=low, 2, 3, 4=high
+   3. Husband's education            (categorical)      1=low, 2, 3, 4=high
+   4. Number of children ever born   (numerical)
+   5. Wife's religion                (binary)           0=Non-Islam, 1=Islam
+   6. Wife's now working?            (binary)           0=Yes, 1=No
+   7. Husband's occupation           (categorical)      1, 2, 3, 4
+   8. Standard-of-living index       (categorical)      1=low, 2, 3, 4=high
+   9. Media exposure                 (binary)           0=Good, 1=Not good
+   10. Contraceptive method used     (class attribute)  1=No-use 
+                                                        2=Long-term
+                                                        3=Short-term
+                                                        
+The pairs.panels function in the psych package in R can be used to explore the data features.  The correlation elipse indicates there could be correlation between the wife working, the wife religion, standard of living, and wife's education and the contraception method used.  The number of children's histogram is skewed to the right which would be what I would expect since the min is 0 and the max is 16.                 
+```{r}
+library(psych)
+library(ggplot2)
+library(caret)
+compared_variables_contra<-pairs.panels(contraception_df[c("w_age", "w_ed", "num_ch", "h_ed", "w_rel", "w_wrk", "h_job", "s_o_l", "med_exp", "c_m_u")])
+```
+In order to determine if there are missing varibable, is.na will be used.  is.na returns "TRUE" or "FALSE" in respect to whether or not there are any missing variables present in the dataset.  There are not any missing variables, so data imputation is not needed.
+```{r}
+is.na(contraception_df)
+```
+
+##Naive Bayes
+Naive Bayes doesn't do well with many numeric values so the numeric values will be changed.  If there are ranges, such as is the case with the number of children, the ranges can be put into bins.  Since Naive Bayes works best with binary class predictors, it will be used only to determine whether or not wife will use any contraceptive method so the data will be converted for that as well.
+
+Data preparation
+```{r}
+#make a copy of the data set for different uses since different methods have different requirements.  
+naive_df<-contraception_df
+naive_df$w_ed <- factor(naive_df$w_ed, labels = c("low", "med_l", "med_h", "high"))
+naive_df$h_ed <- factor(naive_df$h_ed, labels = c("low", "med_l", "med_h", "high"))
+summary(naive_df$w_age) #look at the range of age, falls between 16 and 49. mean greater than median.
+hist(naive_df$w_age) #slight right skew
+summary(contraception_df$num_ch)
+summary(naive_df$num_ch) #look at the range of children, falls between zero to 16. mean is higher than the median so it will be skewed to the right
+hist(naive_df$num_ch) #very few after 8.  looking at the histogram, you can see that it is skewed to the right. tail stretching over to the right)
+naive_df$num_ch[naive_df$num_ch == 0] = "no_children"
+naive_df$num_ch[naive_df$num_ch == 1 | naive_df$num_ch == 2 ] = "low"
+naive_df$num_ch[naive_df$num_ch == 3 | naive_df$num_ch == 4 ] = "med"
+naive_df$num_ch[naive_df$num_ch == 5 | naive_df$num_ch == 6 ] = "med_h"
+naive_df$num_ch[naive_df$num_ch == 7 | naive_df$num_ch == 8 ] = "high"
+naive_df$num_ch[naive_df$num_ch == 9 | naive_df$num_ch == 10 ] = "v_high"
+naive_df$num_ch[naive_df$num_ch == 11 | naive_df$num_ch == 12 ] = "v_high"
+naive_df$num_ch[naive_df$num_ch == 13 | naive_df$num_ch == 14 ] = "v_high"
+naive_df$num_ch[naive_df$num_ch == 15 | naive_df$num_ch == 16 ] = "v_high"
+naive_df$w_rel <- ifelse(naive_df$w_rel == 1, "islam", "no_islam")
+naive_df$w_wrk <- ifelse(naive_df$w_wrk == 1, "not_working", "working")
+naive_df$h_job <- factor(naive_df$h_job, labels = c("low", "med_l", "med_h", "high"))
+naive_df$s_o_l <- factor(naive_df$s_o_l, labels = c("low", "med_l", "med_h", "high"))
+naive_df$med_exp <- ifelse(naive_df$med_exp == 1, "not_good", "good")
+naive_df$c_m_u <- ifelse(naive_df$c_m_u == 1, "no-use", "use")
+```
+
+Split data into training and test 80/20
+```{r}
+set.seed(123)
+NB_Partition <- createDataPartition(y = naive_df$c_m_u, p = 0.8, list = FALSE)
+NB_training_data <- naive_df[NB_Partition,]
+NB_testing_data <- naive_df[-NB_Partition,]
+```
+
+Naive Bayes Model
+```{r}
+library(e1071)
+NB_training_data$c_m_u <- factor(NB_training_data$c_m_u)
+NB_classifier<- naiveBayes(NB_training_data, NB_training_data$c_m_u)
+NB_train_pred <- predict(NB_classifier, NB_training_data)
+NB_test_pred <- predict(NB_classifier, NB_testing_data) 
+```
+
+Evaluate model accuracy using absolute accuracy through prop.table, confusion matrix and ROC/AUC. We can see that in just predicting no use vs use, our accuracy is only at the highest 65 percent. Sensitivity is at about 45 percent for no use, meaning the model correctly identifies a positive result.  The specificity of the model is 74 percent, meaning the model correctly identifies 74 percent of the negatives correctly. The Kappa statistic is less than .20, meaning that it is in poor agreement.
+```{r}
+#confusion matrix
+NB_conf_matrix<-confusionMatrix(NB_test_pred, as.factor(NB_testing_data$c_m_u))   #about 60 percent
+NB_conf_matrix #about 60 percent
+
+#AUC
+library(ROCR)
+resultNB <- predict(NB_classifier, NB_testing_data, type="raw")
+NBpred <- prediction(resultNB[,2], NB_testing_data$c_m_u)
+NBperf <- performance(NBpred, measure = "tpr", x.measure = "fpr")
+plot(NBperf)
+aucNB <- performance(NBpred, measure = "auc")   #about 65 percent
+```
+Next, a Decision Tree Model will be created to determine whether we can predict contraception use using the factors in the data set.
+
+##Decision Tree
+
+Decision Trees work well on both numeric and nominal features.  as.factor will be used on the categorical features in the datasdet.
+```{r}
+#copy original dataset to dataset for decision tree
+DT_df <- contraception_df
+
+#convert categorical classes to factor classes
+DT_df$w_ed <- factor(DT_df$w_ed, labels = c("low", "med_l", "med_h", "high"))
+DT_df$h_ed <- factor(DT_df$h_ed, labels = c("low", "med_l", "med_h", "high"))
+DT_df$w_rel <- ifelse(DT_df$w_rel == 1, "islam", "no_islam")
+DT_df$w_wrk <- ifelse(DT_df$w_wrk == 1, "not_working", "working")
+DT_df$h_job <- factor(DT_df$h_job, labels = c("low", "med_l", "med_h", "high"))
+DT_df$s_o_l <- factor(DT_df$s_o_l, labels = c("low", "med_l", "med_h", "high"))
+DT_df$med_exp <- ifelse(DT_df$med_exp == 1, "not_good", "good")
+DT_df$c_m_u <- factor(DT_df$c_m_u, labels = c("no_use", "long_term", "short_term"))
+DT_df$med_exp <- as.factor(DT_df$med_exp)
+DT_df$w_rel <- as.factor(DT_df$w_rel)
+DT_df$w_wrk <- as.factor(DT_df$w_wrk)
+```
+
+split data into training and test 80/20.
+```{r}
+set.seed(123)
+DT_Partition <- createDataPartition(y = DT_df$c_m_u, p = 0.8, list = FALSE)
+DT_training_data <- DT_df[DT_Partition,]
+DT_testing_data <- DT_df[-DT_Partition,]
+```
+
+Build the Decision Tree model and use fancyRpartPlot to visualize the tree.
+```{r}
+library(rpart)
+#install.packages("rattle")
+library(rattle)
+library(rpart.plot)
+library(RColorBrewer)
+tree <- rpart(c_m_u ~. , data = DT_training_data, method = "class")
+fancyRpartPlot(tree)
+DT.predict <- predict(tree, DT_testing_data, type = "class")
+```
+According to the tree, the  first split occurs in regards to women having children vs women not having children.  The next split occurs on the on the women's education level node.  The next splits occur at if the number of children a woman has is over 2.5 and the woman's age.
+
+Accuracy will be assessed using a confusion matrix.  The accuracy is about 57 percent. Sensitivity is at about 66 percent for no use, 32 percent for long term use and 64 percent for short term use, meaning that the model correctly identifies those classifiers for that percentage.  The specificity of the model is 73 percent for no use, 92 percent for long term use and 68 percent for short term use, meaning those percentages of women who do not fall in those categories of contraception use are correctly identified. The Kappa statistic is .327, meaning it is in fair agreement.   
+```{r}
+# Construct the confusion matrix
+(DT_conf <- confusionMatrix(DT.predict, as.factor(DT_testing_data$c_m_u)) )#about 57 percent
+```
+###Bagging
+The bagging function can be used with decision trees.  Bagging is useful for decision trees because decision trees are unstable, meaning they can have a large change after small changes in their data.
+
+```{r}
+#load ipred
+library(ipred)
+set.seed(123)
+
+#default 25 trees
+my_bag <- bagging(c_m_u ~ ., data = DT_training_data, nbagg = 25)
+bag_pred <- predict(my_bag, DT_testing_data)
+table(bag_pred, DT_testing_data$c_m_u)
+```
+
+Ten fold cross validation can be used on the bagged decision tree.  The accuracy of the bagged decision tree was lower than the decision tree modeled previously.  The kappa statistic is also in poor agreement, being less than .20.
+```{r}
+set.seed(123)
+ctrl <- trainControl(method = "cv", number = 10)
+train(c_m_u ~ ., data = DT_training_data, method = "treebag", trControl = ctrl)
+```
+##Random forest
+A random forest will be used next.  It offers some benefits like being less prone to overfitting and it selects only the most important features. The same prepared data as the decision tree can be used for the model.  By default, the randomForest() function will use 500 trees as the ensemble.
+```{r}
+library(randomForest) 
+RF_model <- randomForest(c_m_u ~., data = DT_training_data)
+```
+Accuracy can be assessed using a confusion matrix.  The accuracy is about 56 percent.  It did not perform as well as the decision tree.  Sensitivity is at about 65 percent for no use, 38 percent for long term use and 50 percent for short term use, meaning that the model correctly identifies those classifiers for that percentage.  The specificity of the model is 70 percent for no use, 87 percent for long term use and 71 percent for short term use, meaning those percentages of women who do not fall in those categories of contraception use are correctly identified.  The Kappa statistic is in fair agreement at 0.27.
+```{r}
+RF_predict<- predict(RF_model, DT_testing_data)
+(RF_conf <- confusionMatrix(RF_predict, as.factor(DT_testing_data$c_m_u)))
+#56 percent accuracy
+```
+
+Use repeated 10 fold cross validation to evaluate model.  The accuracy is about 50 to 52 percent.
+```{r}
+ctrl<-trainControl(method = "repeatedcv", number = 10, repeats = 10)
+grid_rf<-expand.grid(.mtry = c(3, 6, 9))
+set.seed(123)
+m_rf<-train(c_m_u ~., data = DT_training_data, method = "rf", metric = "Kappa", trControl = ctrl, tuneGrid = grid_rf)
+```
+
+##SVM
+
+Support Vector machines are useful for both classification and numeric prediction.  While it can be slow to train, it is not prone to overfitting and noisy data does not affect it as easily.
+
+The original dataset will be copied to use with the SVM model.  No standardization or normalization will be needed since the package which will be used does it automatically.  
+```{r}
+#copy original dataset to dataset for SVM
+SVM_df <- contraception_df
+
+#convert categorical and binary variables into factors
+SVM_df$c_m_u <- factor(SVM_df$c_m_u, labels = c("no_use", "long_term", "short_term"))
+SVM_df$w_ed <- as.factor(SVM_df$w_ed)
+SVM_df$h_ed <- as.factor(SVM_df$h_ed)
+SVM_df$w_rel <- as.factor(SVM_df$w_rel)
+SVM_df$w_wrk <- as.factor(SVM_df$w_wrk)
+SVM_df$h_job <- as.factor(SVM_df$h_job)
+SVM_df$s_o_l <- as.factor(SVM_df$s_o_l)
+SVM_df$med_exp <- as.factor(SVM_df$med_exp)
+
+#split data into training and test sets
+set.seed(123)
+SVM_Partition <- createDataPartition(y = SVM_df$c_m_u, p = 0.75, list = FALSE)
+SVM_training_data <- SVM_df[SVM_Partition,]
+SVM_testing_data <- SVM_df[-SVM_Partition,]
+```
+
+Build the SVM Model using the ksvm function.  The RBF kernel performs well on various data types.
+```{r}
+library(kernlab)
+(SVM_m <- ksvm(c_m_u ~ ., data = SVM_training_data, prob.model = TRUE, kernel = "rbfdot"))
+#error of 39 percent
+
+#look at if the default Cost = 1 is really the best option
+library(e1071)
+tune.svm <- tune(svm, c_m_u~., data = SVM_training_data, kernel = "radial",
+                 ranges = list(cost = c(1, 5, 10, 15, 25, 50, 100)))
+
+# extract the best model
+(bestmod <- tune.svm$best.model)
+
+#from the tune we can see that the cost of 1 is the best option
+
+#model on testing data
+svm_model_prediction <- predict(SVM_m, SVM_testing_data)
+```
+Measure accuracy using a confusion matrix.  From the confusion matrix, the accuracy is measured at about 55 percent.  Sensitivity is at about 70 percent for no use, 39 percent for long term use and 47 percent for short term use, meaning that the model correctly identifies those classifiers for that percentage.  The specificity of the model is 64 percent for no use, 89 percent for long term use and 75 percent for short term use, meaning those percentages of women who do not fall in those categories of contraception use are correctly identified.  The Kappa statistic is in fair agreement at about .29.
+```{r}
+# Construct the confusion matrix
+(SVM_conf <- confusionMatrix(svm_model_prediction, as.factor(SVM_testing_data$c_m_u))) #about 55 percent
+```
+
+##Neural Network
+
+Neural Networks work best when data is normalized to a narrow range from zero to one so the data will be normalized first.
+```{r}
+#copy contraception dataset to neural network dataset
+NN_df <- contraception_df
+
+#normalize 
+numeric.variables <- NN_df[, sapply(NN_df, is.numeric)]
+maxs <- apply(numeric.variables, 2, max)
+mins <- apply(numeric.variables, 2, min)
+min_and_max_processed <- as.data.frame(scale(numeric.variables, center = mins, scale = maxs - mins))
+apply(min_and_max_processed, 2, range) 
+NN_df <- min_and_max_processed
+```
+
+Split the data into training and testing sets.
+```{r}
+set.seed(123)
+PartitionNN <- createDataPartition(y = NN_df$c_m_u, p = 0.8, list = FALSE)
+training_dataNN <- NN_df[PartitionNN,]
+testing_dataNN <- NN_df[-PartitionNN,]
+```
+
+Model for neural network
+Two packages will be used to see if one function will yield a better model to work with.  
+```{r}
+set.seed(123)
+library(neuralnet)
+sapply(NN_df, class)
+model_NN <- neuralnet(c_m_u ~ w_age + w_ed + h_ed + num_ch + w_rel  + w_wrk +h_job + s_o_l + med_exp, data=training_dataNN)
+plot(model_NN)
+```
+Evaluate the model
+The error rate for the neural network training model is high (97 percent).  The correlation is at 35 percent.  MSE can also be used to evaluate the model.  The mean square error for the neural network model is about 0.17.
+```{r}
+#measure correlation for prediction
+NN_results <- compute(model_NN, testing_dataNN[1:9])
+predicted_NN_classifiers <- NN_results$net.result
+cor(predicted_NN_classifiers, testing_dataNN$c_m_u)
+
+#MSE
+pr.nn <- predicted_NN_classifiers*(max(NN_df$c_m_u)-min(NN_df$c_m_u) + min(NN_df$c_m_u))
+
+test.r <- (testing_dataNN$c_m_u)*(max(NN_df$c_m_u)-min(NN_df$c_m_u))+min(NN_df$c_m_u)
+
+MSE.nn <- sum((test.r - pr.nn)^2)/nrow(testing_dataNN)
+```
+
+##Ensemble
+
+Using the caretEnsemble package, multiple models can be combined.  The MAE of the models all fall within once percent of eachother.  The RMSE for rpart is the greatest then nnet then svmRadial.  All of the models have low Rsquared values; however, nnet's R squared is the highest.
+```{r}
+#install.packages("caretEnsemble")
+library(caretEnsemble)
+
+stacking_control <- trainControl(method="repeatedcv", number=10, repeats=3, savePredictions=TRUE, classProbs=TRUE)
+algorithmList <- c('rpart', 'nnet', 'svmRadial')
+set.seed(123)
+models <- caretList(c_m_u ~., data=NN_df, trControl=stacking_control, methodList=algorithmList)
+results <- resamples(models)
+summary(results)
+dotplot(results)
+
+#correlation
+modelCor(results)
+splom(results)
+```
+
+The lowest correlation is between svmRadial and rpart(.55), then nnet and rpart(.68).  the highest correlation is between svmRadial and nnet(.84).  When stacking, the sub-models that have the lowest correlation are more desireable to use.  rpart will be used for stacking since it has the lowest correlation values.  While the MAE and the RMSE of the ensemble is slightly higher, the R squared increased as well.  
+```{r}
+# stack using rpart
+stackControl <- trainControl(method="repeatedcv", number=10, repeats=3, savePredictions=TRUE, classProbs=TRUE)
+set.seed(123)
+stack.rpart <- caretStack(models, method="rpart", metric="MAE", trControl=stackControl)
+print(stack.rpart)
+```
+
+##Evaluating all the models against one another
+
+The previous models were used to determine whether or not a woman's contraception use could be understood using the variables in the dataset.  With the exception of using Naive Bayes just to look at whether or not no contraception is used at all, a decision tree model appears to have the best accuracy at 57 percent accuracy.  A random forest was used as an ensemble of decision trees and yielded 56 percent accuracy.  The support vector machine model came cloast to the decision tree model with 55 percent accuracy.    
+
+None of the models used were ideal models.  This could be due to the models chosen or that the factors surrounding a woman's contraception choice are more complicated than the data collected.  For example, religion is only specified as being Muslim or not.  It doesn't specify other religions, what type of Muslim, if they are a practicing Muslim, etc.  
+
+##Conclusion
+
+Although none of the models yielded particularly high accuracy rates.  There did appear to be some correlation between the education of the woman, the standard of living, and whether or not the woman was working.  According to our decision tree model, our splits occured according to number of children, education, and age.  By understanding the factors contributing to birth control choice, the family planning program can best decide how where to allocate their resources.  
+
+##References
+
+Putjuk, H. F. (2014, September 25). Indonesia's family planning program: From stagnation to revitalization. Retrieved from https://www.devex.com/news/indonesia-s-family-planning-program-from-stagnation-to-revitalization-84387
+Salvá, A. (2017, July 27). Would moving Indonesia's capital work? Retrieved from https://www.scmp.com/week-asia/politics/article/2104041/would-moving-indonesias-capital-work
+Tjen-Sien Lim. (1997). UCI Machine Learning Repository [https://archive.ics.uci.edu/ml/datasets/Contraceptive+Method+Choice]. Irvine, CA: University of California, School of Information and Computer Science.
+U.S. Census Bureau Current Population. (2018). Retrieved from https://www.census.gov/popclock/print.php?component=counter

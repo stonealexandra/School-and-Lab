@@ -1,0 +1,275 @@
+---
+title: "Stone_A_5"
+author: "Alexandra Stone"
+date: "September 29, 2019"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Assignment 5
+```{r}
+#load packages
+library(tidyverse)
+library(stringr)
+library(readr)
+library(readxl)
+library(dplyr)
+library(forcats)
+library(chron)
+library(lubridate)
+
+#load datasets
+na.vals <- c("", "NA", "n/a", "N/A", "none")
+fmarkets <- read_csv("C:/Users/user/Desktop/Data Mining/farmers_market.csv", na = na.vals)
+
+```
+
+## Question 1 Add a new column Season1Days that contains the number of days a market is opened per week (for the dates it is open).
+```{r}
+#regex to recognize day of week
+re_season <- str_c(
+  "(?i)(Mon|Tue|Wed|Thu|Fri|Sat|Sun)")
+
+#Add column with counts per week for season 1
+fmarkets <- fmarkets %>%
+  mutate(
+    Season1Days = Season1Time %>%
+      str_count(re_season))
+```
+
+## Question 2  Add a new column WeekendOpen indicating whether a market opens during weekends in Season1.
+```{r}
+#use ifelse to change true false to yes no when weekend detected
+fmarkets<- fmarkets %>% 
+  mutate(WeekendOpen = ifelse(str_detect(Season1Time, "(?i)(Sat|Sun)"), "YES", "NO"))
+```
+
+##Question 3 Find out which markets close before 6PM, and which open only for fewer than 4 hours a day. For simplicity, consider only Season1Time. For markets with different open hours across a week, use the average length of open hours for the days they actually open
+```{r}
+# Pull out column desired to work with outside of the dataframe.
+# Make formats the same for time before using strptime
+dfTime<-as.data.frame(fmarkets$Season1Time)
+colnames(dfTime)<-"MarketTime"
+dfTime$MarketTime<-as.character(dfTime$MarketTime)
+dfTime$MarketTime<-gsub("(M-)", "M - ", dfTime$MarketTime)
+dfTime$MarketTime<-gsub("([a-z]:)", "\\1 ", dfTime$MarketTime)
+dfTime$MarketTime<-gsub(";", "; ", dfTime$MarketTime)
+
+#strptime only recognizing one time at a time.  Get all of the times in separate columns
+dfTime$First<-strptime(dfTime$MarketTime, "%a: %I:%M %p")
+dfTime$second<-strptime(dfTime[,1], "%a: %I:%M %p - %I:%M %p;")
+dfTime$third<-strptime(dfTime[,1], 
+                       "%a: %I:%M %p - %I:%M %p; %a: %I:%M %p")
+dfTime$fourth<-strptime(dfTime[,1], 
+                        "%a: %I:%M %p - %I:%M %p; %a: %I:%M %p - %I:%M %p;")
+dfTime$fifth<-strptime(dfTime[,1], 
+                       "%a: %I:%M %p - %I:%M %p; %a: %I:%M %p - %I:%M %p; %a: %I:%M %p")
+dfTime$sixth<-strptime(dfTime[,1], 
+                       "%a: %I:%M %p - %I:%M %p; 
+%a: %I:%M %p - %I:%M %p; %a: %I:%M %p - %I:%M %p;")
+dfTime$seventh<-strptime(dfTime[,1], 
+"%a: %I:%M %p - %I:%M %p; 
+%a: %I:%M %p - %I:%M %p; %a: %I:%M %p - %I:%M %p; %a: %I:%M %p")
+dfTime$eighth<-strptime(dfTime[,1], 
+"%a: %I:%M %p - %I:%M %p; 
+%a: %I:%M %p - %I:%M %p; %a: %I:%M %p - %I:%M %p; 
+%a: %I:%M %p - %I:%M %p;")
+dfTime$ninth<-strptime(dfTime[,1],
+"%a: %I:%M %p - %I:%M %p; 
+%a: %I:%M %p - %I:%M %p; %a: %I:%M %p - %I:%M %p; 
+%a: %I:%M %p - %I:%M %p; %a: %I:%M %p")                        
+                        
+dfTime$tenth<-strptime(dfTime[,1],                        
+"%a: %I:%M %p - %I:%M %p; 
+%a: %I:%M %p - %I:%M %p; %a: %I:%M %p - %I:%M %p; 
+%a: %I:%M %p - %I:%M %p; %a: %I:%M %p - %I:%M %p;")
+
+dfTime$eleventh<-strptime(dfTime[,1],                        
+"%a: %I:%M %p - %I:%M %p; 
+%a: %I:%M %p - %I:%M %p; %a: %I:%M %p - %I:%M %p; 
+%a: %I:%M %p - %I:%M %p; %a: %I:%M %p - %I:%M %p;
+%a: %I:%M %p")
+dfTime$twelve<-strptime(dfTime[,1],                        
+"%a: %I:%M %p - %I:%M %p; 
+%a: %I:%M %p - %I:%M %p; %a: %I:%M %p - %I:%M %p; 
+%a: %I:%M %p - %I:%M %p; %a: %I:%M %p - %I:%M %p;
+%a: %I:%M %p - %I:%M %p;")
+dfTime$thirt<-strptime(dfTime[,1],                        
+"%a: %I:%M %p - %I:%M %p; 
+%a: %I:%M %p - %I:%M %p; %a: %I:%M %p - %I:%M %p; 
+%a: %I:%M %p - %I:%M %p; %a: %I:%M %p - %I:%M %p;
+%a: %I:%M %p - %I:%M %p; %a: %I:%M %p")
+dfTime$fourt<-strptime(dfTime[,1],                        
+"%a: %I:%M %p - %I:%M %p; 
+%a: %I:%M %p - %I:%M %p; %a: %I:%M %p - %I:%M %p; 
+%a: %I:%M %p - %I:%M %p; %a: %I:%M %p - %I:%M %p;
+%a: %I:%M %p - %I:%M %p; %a: %I:%M %p - %I:%M %p;")
+
+# calculate how long market is open as numeric
+dfTime$DiffOne<- as.numeric(abs(difftime(dfTime$First, dfTime$second, units = "hours"))) 
+dfTime$DiffTwo<-as.numeric(abs(difftime(dfTime$third, dfTime$fourth, units = "hours")))
+dfTime$DiffThree<-as.numeric(abs(difftime(dfTime$fifth, dfTime$sixth, units = "hours")))
+dfTime$DiffFour<-as.numeric(abs(difftime(dfTime$seventh, dfTime$eighth, units = "hours")))
+dfTime$DiffFive<-as.numeric(abs(difftime(dfTime$ninth, dfTime$tenth, units = "hours")))
+dfTime$DiffSix<-as.numeric(abs(difftime(dfTime$eleventh, dfTime$twelve, units = "hours")))
+dfTime$DiffSeven<-as.numeric(abs(difftime(dfTime$thirt, dfTime$fourt, units = "hours")))
+
+#Find average time and ignore column if it contains NA
+dfTime <- transform(dfTime, meanOpenTime = rowMeans(dfTime[,16:22], na.rm = TRUE))
+
+#Find if any market is open 4 or less hours
+dfTime$OpenLessThanFourHours<-ifelse(dfTime$meanOpenTime < 4, "YES", "NO")
+
+dfTime<-unite(dfTime,
+              col = "timesCombined",
+              from = c("First", "second", "third", "fourth",    
+                        "fifth", "sixth", "seventh", "eighth",                              "ninth", "tenth", "eleventh", "twelve",                             "thirt", "fourt" ),
+              sep = ",")
+
+str(dfTime$timesCombined)
+condition<-str_detect(dfTime$timesCombined, "18:00|18:30|19:00|19:30|20:00|20:30|21:00|21:30|22:00|22:30|23:00|23:30|24:00")
+dfTime$ClosingTime6<-ifelse(condition == "TRUE", "Close at or after 6", "Close before 6")
+
+#Add the columns back into the main df
+fmarkets$MeanOpenTime<-dfTime$meanOpenTime
+fmarkets$OpenLessThanFourHours<-dfTime$OpenLessThanFourHours
+fmarkets$ClosingTime6<-dfTime$ClosingTime6
+
+```
+
+
+##The seasons are not standardized and would make analysis difficult. Create four new columns for four seasons (Spring, Summer, Fall, Winter), indicating whether a market is available in that season. Also, create two additional columns HalfYear and YearRound to identify those who open across seasons. Define "half year" and "year round" on your own terms, but explain them before you write the code (or as comments in your code). (Hint: you may want to create even more auxiliary columns, Season1BeginDate and Season1EndDate for example.)
+
+```{r}
+#copy data frame to work with
+df4 <- as.data.frame(fmarkets$Season1Date)
+
+#split on to and separate into different columns
+df4<-str_split_fixed(df4$`fmarkets$Season1Date`, "to", 2)
+
+#force into data frame
+df4<-as.data.frame(df4)
+
+#insert column names
+colnames(df4)<- c("open.date", "close.date")
+
+#use lubridate to format
+df4$open.date.clean<-mdy(df4$open.date)
+df4$close.date.clean<-mdy(df4$close.date)
+
+#replace NA values which should have dates
+df4$open.date.clean <- ifelse(is.na(df4$open.date.clean), df4$open.date, df4$open.date.clean)
+df4$close.date.clean <- ifelse(is.na(df4$close.date.clean), df4$close.date, df4$close.date.clean)
+
+str(df4$open.date.clean)
+
+#get rid of values which should not exist 
+df4$open.date.clean<-na_if(df4$open.date.clean, 1)
+df4$close.date.clean<-na_if(df4$close.date.clean, 1)
+
+#put back in date format
+df4$open.date.clean<-as.Date(df4$open.date.clean, origin ="1970-01-01")
+df4$close.date.clean<-as.Date(df4$close.date.clean, origin ="1970-01-01")
+
+#Find time differences in months
+df4$time.diff.months<-round((df4$close.date.clean - df4$open.date.clean)/(365.25/12))
+df4$time.diff.months<-abs(df4$time.diff.months)
+
+#load library zoo 
+library(zoo)
+
+df4$ym1 <- as.yearmon(as.character(df4$open.date.clean), "%Y-%m-%d") 
+df4$ym2 <- as.yearmon(as.character(df4$close.date.clean), "%Y-%m-%d") 
+
+sequenceFunction <- function (x,y) {
+  return(tryCatch(seq(x, y, 1/12), error=function(e) NULL))
+}
+
+datesinmonths<-mapply(sequenceFunction, df4$ym1, df4$ym2)
+
+#get list of list as character
+df4$DateRangeOpen<-lapply(datesinmonths, as.character)
+
+#unlist the list and split on the comma
+df4<-df4 %>%
+  mutate(DateRangeOpen = map(DateRangeOpen, toString ) ) %>%
+  separate(DateRangeOpen, into = c("M1", "M2", "M3", "M4", "M5", "M6", 
+                                   "M7", "M8", "M9", "M10", "M11", "M12"), 
+           sep = "(,)", convert = TRUE)
+
+mode(df4$M1)
+
+df4$CombinedDates <- paste(df4$M1, df4$M2, df4$M3, df4$M4, df4$M5, df4$M6, df4$M7, df4$M8,
+                      df4$M9, df4$M10, df4$M11, df4$M12, sep=",")
+df4$CombinedDates<-gsub("NA,", "", df4$CombinedDates)
+df4$CombinedDates<-gsub(",NA", "", df4$CombinedDates)
+mode(df4$CombinedDates)
+df4$OpenDuringSeasons<-gsub("Dec|Jan|Feb", "Winter", df4$CombinedDates)
+df4$OpenDuringSeasons<-gsub("Mar|Apr|May", "Spring", df4$OpenDuringSeasons)
+df4$OpenDuringSeasons<-gsub("Jun|Jul|Aug", "Summer", df4$OpenDuringSeasons)
+df4$OpenDuringSeasons<-gsub("Sep|Oct|Nov", "Fall", df4$OpenDuringSeasons)
+df4$OpenDuringSeasons<-gsub(" \\d+","", df4$OpenDuringSeasons)
+
+#remove duplicates
+df4$OpenDuringSeasons <- sapply(df4$OpenDuringSeasons, function(x) paste(unique(unlist(str_split(x,", "))), collapse = ", "))
+
+df4<- df4 %>% 
+  mutate(Summer = ifelse(str_detect(OpenDuringSeasons, "(Summer)"), "YES", ""))
+
+df4<- df4 %>%
+  mutate(Spring = ifelse(str_detect(OpenDuringSeasons, "(Spring)"), "YES", ""))
+
+df4<- df4 %>% 
+  mutate(Winter = ifelse(str_detect(OpenDuringSeasons, "(Winter)"), "YES", ""))
+
+df4<- df4 %>% 
+  mutate(Fall = ifelse(str_detect(OpenDuringSeasons, "(Fall)"), "YES", ""))
+
+#if market open for 6 months assign yes to half year
+df4<- df4 %>% 
+  mutate(HalfYear =ifelse(time.diff.months == 6, "OPEN", "NOT OPEN"))
+
+#if market open more than 10 months assign yes to full year
+df4<- df4 %>% 
+  mutate(YearRound =ifelse(time.diff.months>10, "OPEN", "NOT OPEN"))
+
+#add new data to existing fmarkets data frame
+fmarkets$Winter<-df4$Winter
+fmarkets$Spring<-df4$Spring
+fmarkets$Summer<-df4$Summer
+fmarkets$Fall<-df4$Fall
+fmarkets$HalfYear<-df4$HalfYear
+fmarkets$YearRound<-df4$YearRound
+```
+
+## Question 5 Open question: explore the new variables you just created. Aggregate them at different geographic levels, or some other categorical variable. What can you discover?
+
+```{r}
+#explore how how many markets are open less than 4 hours vs more than 4 hours
+mode(fmarkets$OpenLessThanFourHours)
+length(grep("NO", fmarkets$OpenLessThanFourHours))
+length(grep("YES", fmarkets$OpenLessThanFourHours))
+```
+More markets are open for less than 4 hours a day than open for more than 4 hours a day
+
+```{r}
+#explore how many markets close before 6pm vs at or after 6pm
+mode(fmarkets$ClosingTime6)
+length(grep("Close before 6", fmarkets$ClosingTime6))
+length(grep("Close at or after 6", fmarkets$ClosingTime6))
+```
+More markets close before 6pm than closing at 6pm or after 6pm.
+
+```{r}
+#explore which season markets are open the most
+length(grep("YES", fmarkets$Fall))
+length(grep("YES", fmarkets$Winter))
+length(grep("YES", fmarkets$Spring))
+length(grep("YES", fmarkets$Summer))
+```
+Markets are open most often (in order) are Summer, Fall, Spring, Winter.

@@ -1,0 +1,358 @@
+---
+title: "Stone_A_10.Rmd"
+author: "Alexandra Stone"
+date: "November 11, 2019"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Assignment 10
+
+##Question 1 Revisit the census schema you created for homework 6. After installing SQLite, implement the tables for your database design in SQLite and load the data into the correct tables using either SQL INSERT statements or CSV loads. Make sure the database design is normalized (at least 3NF) and has minimal redundancy. Make sure your SQLite tables have primary keys as well as foreign keys for relationships. (20 points)
+```{r error=TRUE}
+library(readr)
+library(readxl)
+library(tidyverse)
+
+#load datasets
+setwd("c:/Users/user/Desktop")
+na.vals <- c("", "NA", "n/a", "N/A", "none", "NULL")
+FipsEducations <- read_csv("C:/Users/user/Desktop/FipsEducationsDA5020.csv", na = na.vals)
+FipsUnemployment <- read_csv("C:/Users/user/Desktop/FipsUnemploymentDA5020.csv", na = na.vals)
+FipsUnemploymentOriginal <- read_csv("C:/Users/user/Desktop/FipsUnemploymentDA5020.csv", na = na.vals)
+
+#spread year and percent_unemployed so each is only dependent on the primary key
+FipsUnemployment<- FipsUnemployment %>%
+    spread(key = year, value = percent_unemployed) 
+colnames(FipsUnemployment)<-c("fips", "x2007", "x2008", "x2009", "x2010", "x2011", "x2012",
+                              "x2013", "x2014", "x2015")
+
+FipsUnemployment <- tibble::rowid_to_column(FipsUnemployment, "ID")
+
+#spread percent_measure and percent
+FipsEducations<- FipsEducations %>%
+    spread(key = percent_measure, value = percent) 
+
+#separate county_state into state and county columns
+FipsEducations<- FipsEducations %>%
+    separate(county_state, into = c("state", "county"))
+
+
+#Tibble Fips 
+Fips<-as_tibble(FipsEducations) %>%
+  select(fips, state, county, rural_urban_cont_code) %>%
+  distinct()
+
+#Tibble rural_urban_code
+ruralUrbanCode<-as_tibble(FipsEducations) %>%
+  na.omit() %>%
+  select(rural_urban_cont_code, description) %>%
+  distinct() %>%
+  arrange(rural_urban_cont_code) 
+
+#Tibble eduction
+education<-as_tibble(FipsEducations) %>%
+  select(fips, year, state, county, percent_four_plus_years_college, percent_has_some_college, percent_hs_diploma, `percent_less than_hs_diploma`) 
+
+colnames(education)<- c("fips", "year", "state", "county", "four_year", "some_college",
+                        "hs_diploma", "no_hs_diploma")
+
+#add unique identifier
+education <- tibble::rowid_to_column(education, "ID")
+
+library(RSQLite)
+
+#database for Fips unemployment and education
+database<-dbConnect(SQLite(),dbname="FipsUnemployment.sqlite")
+
+#create table for rural urban code with primary key as the code
+dbSendQuery(database, "CREATE TABLE ruralUrbanCode
+(
+  rural_urban_cont_code INTEGER PRIMARY KEY, 
+  description TEXT
+)")
+dbWriteTable(database, "ruralUrbanCode", ruralUrbanCode, append=TRUE, row.names=FALSE)
+
+#fips table
+dbSendQuery(database, "CREATE TABLE Fips
+(
+  fips INTEGER PRIMARY KEY,
+  state TEXT,
+  county TEXT,
+  rural_urban_cont_code INTEGER,
+  FOREIGN KEY (rural_urban_cont_code) REFERENCES ruralUrbanCode(rural_urban_cont_code)
+)")
+dbWriteTable(database, "Fips", Fips, append=TRUE, row.names=FALSE)
+
+#education table
+dbSendQuery(database, "CREATE TABLE education
+(
+  ID INTEGER PRIMARY KEY, 
+  fips INTEGER,
+  year INTEGER,
+  state TEXT,
+  county TEXT,
+  four_year INTEGER,
+  some_college INTEGER,
+  hs_diploma INTEGER,
+  no_hs_diploma INTEGER,
+  FOREIGN KEY (fips) REFERENCES Fips(fips)
+)")
+dbWriteTable(database, "education", education, append=TRUE, row.names=FALSE)
+
+#FipsUnemployment table
+dbSendQuery(database, "CREATE TABLE fipsUnemployment
+(
+  ID INTEGER PRIMARY KEY,
+  fips INTEGER,
+  x2007 INTEGER,
+  x2008 INTEGER,
+  x2009 INTEGER,
+  x2010 INTEGER,
+  x2011 INTEGER,
+  x2012 INTEGER,
+  x2013 INTEGER,
+  x2014 INTEGER,
+  x2015 INTEGER,
+  FOREIGN KEY (fips) REFERENCES Fips(fips)
+)")
+dbWriteTable(database, "fipsUnemployment", FipsUnemployment, append=TRUE, row.names=FALSE)
+```
+
+## Question 2 Write SQL expressions to answer the following queries: (40 points)
+
+. 2.0 In the year 1970, what is the population percent that did not earn a high school
+diploma for the Nantucket county in Massachusetts? What about the year 2015?
+
+```{r error=TRUE}
+#1970
+query<- dbSendQuery(database, "Select [no_hs_diploma] from education
+WHERE [year]=1970
+AND [state]='MA'
+AND [county]='Nantucket'")
+dbFetch(query)
+
+#2015
+query<- dbSendQuery(database, "Select [no_hs_diploma] from education
+WHERE [year]=2015
+AND [state]='MA'
+AND [county]='Nantucket'")
+dbFetch(query)
+```
+. 2.1 What is the average population percentage that did not earn a high school diploma
+for the counties in Alabama for the year 2015?
+
+```{r error=TRUE}
+query<- dbSendQuery(database, "Select avg(no_hs_diploma) from education
+WHERE [year]=2015
+AND [state]='AL'")
+dbFetch(query)
+```
+
+. 2.2 What is the average percentage of college graduates for the counties in the state of
+Massachusetts for the year 2015?
+
+```{r error=TRUE}
+query<- dbSendQuery(database, "Select avg(four_year) from education
+WHERE [year]=2015
+AND [state]='MA'")
+dbFetch(query)
+```
+
+. 2.3 Determine the average percentage of the population that did not earn a high school
+diploma for the counties in Alabama for each year within the dataset. The result
+should return the calendar year and the average percentage drop out rate for that
+year.
+
+```{r error=TRUE}
+query<- dbSendQuery(database, "Select [year], avg(no_hs_diploma) from education
+WHERE [state]='AL'
+GROUP BY [year]")
+dbFetch(query)
+```
+
+. 2.4 What is the most common rural_urban code for the U.S. counties?
+
+```{r error=TRUE}
+query<- dbSendQuery(database, "Select [rural_urban_cont_code] from Fips
+GROUP BY [rural_urban_cont_code]
+ORDER BY COUNT(*) DESC
+LIMIT 1")
+dbFetch(query)
+```
+. 2.5 Which counties have not been coded with a rural urban code? Return a result that
+contains two fields: County, State for the counties that has not been assigned a rural
+urban code. Do not return duplicate values in the result. Order the result
+alphabetically by state.
+
+```{r error=TRUE}
+query<- dbSendQuery(database, "Select [county], [state] from Fips
+WHERE [rural_urban_cont_code] IS NULL")
+dbFetch(query)
+```
+
+. 2.6 What is the minimal percentage of college graduates for the counties in the state of
+Mississippi for the year 2010?
+
+```{r error=TRUE}
+query<- dbSendQuery(database, "Select [four_year] from education
+WHERE [state]='MS'
+AND [year]='2010'")
+dbFetch(query)
+#The result is zero results.  When looking through the data it appears there is not any data for the counties in Mississippi for the year 2010.
+```
+. 2.7 Which state contains the most number of counties that have not been provided a
+rural urban code?
+
+```{r error=TRUE}
+query<- dbSendQuery(database, "SELECT count(1), [state]  FROM Fips 
+WHERE [rural_urban_cont_code] IS NULL")
+dbFetch(query)
+```
+
+. 2.8 In the year 2015, which fip counties, U.S. states contain a higher percentage of
+unemployed citizens than the percentage of college graduates? List the county name
+and the state name. Order the result alphabetically by state.
+
+```{r error=TRUE}
+query<- dbSendQuery(database, "Select [county], [state], [four_year] from education;
+SELECT [x2015] from fipsUnemployment WHERE [year] = '2015' < [x2015]")
+
+#comment out so knit document isn't too long
+#dbFetch(query)
+```
+
+. 2.9 Return the county, U.S. state and year that contains the highest percentage of
+college graduates in this dataset?
+```{r error=TRUE}
+query<- dbSendQuery(database, "Select [county], [state], [year], MAX(four_year)  FROM education
+")
+dbFetch(query)
+```
+
+##Question 3 Compare your SQL SELECT statements to your dplyr statements written to answer the same questions. Do you have a preference between the two methods? State your reasons for your preference. (10 points)
+
+I prefer to use SQL SELECT statements over dplyr.  They are shorter to write and I think more readable.  
+
+##Question 4 Write a R function named get_state_county_education_data_dplyr(edf, state), it accepts a data frame containing education data and a state's abbreviation for arguments and produces a chart that shows the change in education across time for each county in that state. Use dplyr to extract the data. Write a few R statements that call the function with different state values. (5 points)
+
+```{r error=TRUE}
+#function for four_year degrees
+get_state_county_education_data_dplyr<-function(edf,states){
+  df <-edf
+  plot_df <-df %>% 
+    select(state, county, year, four_year, some_college, hs_diploma, no_hs_diploma) %>%
+    filter(state == states) %>%
+    group_by(county) %>%
+    do(
+      plots = ggplot() + 
+        geom_line(data = ., aes(x = year, y = four_year), color = "blue") +
+        geom_line(data = ., aes(x = year, y = some_college), color = "red") +
+        geom_line(data = ., aes(x = year, y = hs_diploma), color = "yellow") +
+        geom_line(data = ., aes(x = year, y = no_hs_diploma), color = "green") + ggtitle(.$county)
+    )
+  
+  # show plots
+  return(plot_df$plots)
+}
+
+#comment out so knit document isn't too long
+#get_state_county_education_data_dplyr(edf = education, states = "MA")
+
+#get_state_county_education_data_dplyr(edf = education, states = "AL")
+
+#get_state_county_education_data_dplyr(edf = education, states = "WA")
+
+```
+ 
+##Question 5 Write a R function named get_state_county_education_data_sql(edSQL, state), it accepts a SQL database connection containing education data and a state's abbreviation for arguments and produces a chart that shows the change in education across time for each county in that state. Use SQL SELECT to extract the data from the database. Write a few R statements that call the function with different state values. (10 points)
+
+```{r error=TRUE}
+get_state_county_education_data_sql <- function(edSQL, states, states2) {
+ query <- dbSendQuery(database, paste("SELECT * FROM ", edSQL,
+                                      "WHERE [state] =", states)) 
+ df<-dbFetch(query)
+ plot_df <-df %>% 
+    select(state, county, year, four_year, some_college, hs_diploma, no_hs_diploma) %>%
+    filter(state == states2) %>%
+    group_by(county) %>%
+    do(
+      plots = ggplot() + 
+        geom_line(data = ., aes(x = year, y = four_year), color = "blue") +
+        geom_line(data = ., aes(x = year, y = some_college), color = "red") +
+        geom_line(data = ., aes(x = year, y = hs_diploma), color = "yellow") +
+        geom_line(data = ., aes(x = year, y = no_hs_diploma), color = "green") + ggtitle(.$county))
+return(plot_df$plots)
+}
+
+#comment out so knit document isn't too long
+
+#get_state_county_education_data_sql(edSQL = "education", states = "'MA'", "MA")
+```
+
+##Question 6 Write a R function named get_state_county_unemployment_data_dplyr(udf, state), it accepts a data frame containing unemployment data and state's abbreviation and produces a chart that shows the change in unemployment across time for each county in that state. Use dplyr to extract the data. Write a few R statements that call the function with different state values. 
+
+```{r error=TRUE}
+get_state_county_unemployment_data_dplyr<- function(udf, states) {
+  df<-merge(udf, Fips, by="fips")
+  plot_df<-df %>% 
+    select(year, percent_unemployed, county, state) %>%
+    filter(state == states) %>%
+    group_by(county) %>%
+    do(
+      plots = ggplot() + 
+        geom_line(data = ., aes(x = year, y = percent_unemployed), color = "blue") + ggtitle(.$county))
+  return(plot_df$plots)
+}
+
+#comment out so knit document isn't too long
+#get_state_county_unemployment_data_dplyr(udf = FipsUnemploymentOriginal, states = "MA")
+```
+
+##Question 7 Write a R function named get_state_county_unemployment_data_sql(udfSQL, state), it accepts a SQL database oject containing unemployment data and state's abbreviation and produces a chart that shows the change in education across time for each county in that state. Use SQL SELECT to extract the data. Write a few R statements that call the function with different state values. (10 points)
+
+```{r error=TRUE}
+#create table in database with unemployment and state data
+mergedUnemployment<-merge(FipsUnemploymentOriginal, Fips, by = "fips")
+#fips table
+dbSendQuery(database, "CREATE TABLE mergedUnemployment
+(
+  fips INTEGER,
+  year INTEGER,
+  percent_unemployed INTEGER,
+  state TEXT,
+  county TEXT,
+  rural_urban_cont_code INTEGER
+)")
+
+dbWriteTable(database, "mergedUnemployment", mergedUnemployment, append=TRUE, row.names=FALSE)
+
+#function
+get_state_county_unemployment_data_sql <- function(udSQL, states, states2) {
+ query <- dbSendQuery(database, paste("SELECT * FROM ", udSQL,
+                                      "WHERE [state] =", states)) 
+ df<-dbFetch(query)
+ plot_df<-df %>% 
+    select(year, percent_unemployed, county, state) %>%
+    filter(state == states2) %>%
+    group_by(county) %>%
+    do(
+      plots = ggplot() + 
+        geom_line(data = ., aes(x = year, y = percent_unemployed), color = "blue") + ggtitle(.$county))
+  return(plot_df$plots)
+}
+
+#
+#get_state_county_unemployment_data_sql(udSQL = "mergedUnemployment", states = "'MA'", states2 = "MA")
+```
+
+```{r error=TRUE}
+#disconnect
+dbDisconnect(database)
+```
+

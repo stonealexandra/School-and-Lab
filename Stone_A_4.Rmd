@@ -1,0 +1,258 @@
+---
+title: "Stone_A_4.Rmd"
+author: "Alexandra Stone"
+date: "September 25, 2019"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(stringr)
+library(readr)
+library(readxl)
+library(dplyr)
+library(forcats)
+
+#load datasets
+na.vals <- c("", "NA", "n/a", "N/A", "none")
+fmarkets <- read_csv("C:/Users/user/Desktop/Data Mining/farmers_market.csv", na = na.vals)
+kyfp <- read_excel("C:/Users/user/Desktop/Data Mining/kyfprojects.xls", na = na.vals)
+```
+
+#Assignment 4
+
+##Question 1. Cleanup the Facebook and Twitter column to let them contain only the facebook username or twitter handle name. I.e., replace "https://www.facebook.com/pages/Cameron-Park-FarmersMarket/97634216535?ref=hl" with "Cameron-Park-Farmers-Market", "https://twitter.com/FarmMarket125th" with "FarmMarket125th", and "@21acres" with "21acres".
+
+##Solution Given
+
+This is an example code to identify components in URLs and write regular expressions to extract useful information from them. There are two ways to approach this: you'd either write a regex that matches the whole string, put the usernames/handles in a matching group, then use `str_replace` and back references to replace the whole string with the part you want; or you use `str_extract` to match and extract only the parts you want. We used `str_replace` here because locating back references is in general easier than writing a regex for extracting data with contexted matching. Plus `str_replace` will keep the records without a match intact, making it easier to retain possibly fixable irregular data. These are the most important tricks you should understand:
+
+(?:  )    "?:" at the beginning of a pair of parentheses
+           #indicates a **non-capturing group**
+(    )?   "?" right after the parentheses is a      **quantifier**
+           #other quantifiers include "*", "+", "{1,2}", etc.
+(?:  )?    you can combine these two
+.*?        "?" after a quantifier produces a **lazy quantifier**
+
+Identify patterns
+
+For Facebook, we want to extract facebook username components, but also retain fixable irregular data such as:
+- a page name "Glendale Farmers Market"
+- a group page "/group/xxx/"
+
+There are many variants of free-format URLs, regular expressions are so powerful that you can match them all in one go:
+
+```{r}
+re_facebook <- str_c(
+  "(?i)",         # regex flag: case incensitive,
+                  # check help doc: ?stri_opts_regex
+  "^(?:.*(?:f?acebook|fb)(?:\\.com)?[/ ]?",  # the domain
+  "(?:#\\!/)?(?:pages/)?)?",     # extraneous parts "#!/pages/"
+  "(?:@)?",       # some FB records also contains "@"
+  "([^#]*?)",     # the actual username we want
+                  # (or page name, or fb group url)
+  "/?",           # the extraneous slash at the end
+  "(?:\\?.*)?$"   # the query strings, eg. ?ref=hl
+                  # `$` is a must here, otherwise lazy quantifier
+                  # will prevent the pattern to match all the way
+                  # till the end of the string
+)
+```
+     
+For twitter, the solution is much simpler. 
+
+```{r}
+re_twitter <- str_c(
+  "(?i)",
+  "(?:.*[\\@/])?([a-z0-9_]+)"
+)
+
+# Execute the regex
+
+
+fmarkets <- fmarkets %>%
+  mutate(
+    Facebook.clean = Facebook %>%
+      str_replace(re_facebook, "\\1"),
+    # Above two lines are equivalent to:
+    #    Facebook.clean = str_replace(Facebook, re_facebook, "\\1"),
+    # using pipes makes the code more readable.
+    
+    # Change empty strings to NA
+    Facebook.clean = ifelse(Facebook.clean == "", NA, Facebook.clean),
+    
+    Twitter.clean = Twitter %>%
+      str_replace(re_twitter, "\\1"),
+    
+    Twitter.clean = ifelse(Twitter.clean == "", NA, Twitter.clean)
+  )
+```
+
+
+`Facebook` is the original column name. `Facebook.clean` is the name of the new column we want to add. You can access column names directly inside dplyr pipes, without putting them in quotes or use the dollar sign (e.g. `fmarkets$Facebook`).
+
+"`\\1`" is a "back reference", meaning the first captured matching group. Normally every pair of parentheses `(...)` will create a matching group, but since we used "non-capturing group" `(?:...)` for most of them, the first captured group is limited to contain only the part we want.
+We directly modified the original data frame and added new columns.
+In practice, if you are sure your cleaning will not lose important
+information, you can just override the existing column.
+
+
+##Question 2. Clean up the city and street column. Remove state and county names from the city column and consolidate address spellings to be more consistent (e.g. "St.", "ST.", "Street" all become "St"; "and" changes to "&", etc.).
+
+```{r}
+#remove state and county names from city column
+re_city <- str_c(
+  "^(.*?),.*")
+
+fmarkets <- fmarkets %>%
+  mutate(
+    city.clean = city %>%
+      str_replace(re_city, "\\1"))
+
+#make street column more uniform 
+fmarkets$street = gsub("Streets|Street|STREET|St\\.|ST\\.|street", "St ", fmarkets$street)
+fmarkets$street = gsub(" & ", " and ", fmarkets$street)
+fmarkets$street = gsub("Road|ROAD|Rd\\.", "Rd ", fmarkets$street)
+fmarkets$street = gsub("Drive|Drove|Dr\\.", "Dr ", fmarkets$street)
+fmarkets$street = gsub("Blvd.|Boulevard|boulevard", "Blvd ", fmarkets$street)
+fmarkets$street = gsub("Place|Pl\\.", "Pl", fmarkets$street)
+fmarkets$street = gsub("Avenue|avenue|Ave\\.|AVE|ave\\.", "Ave ", fmarkets$street)
+fmarkets$street = gsub("Route", "Rte", fmarkets$street)
+fmarkets$street = gsub("Highway|highway|Hwy\\.", "Hwy", fmarkets$street)
+```
+
+##Question 3 Create a new data frame (tibble) that explains the online presence of each state's farmers market. I.e., how many percentages of them have a facebook account? A twitter account? Or either of the accounts? (Hint: use the is.na() function)
+
+```{r}
+social_media<-tibble(
+  state = as.factor(fmarkets$State),
+  facebook = fmarkets$Facebook.clean,
+  twitter = fmarkets$Twitter.clean
+)
+
+#Look at the entire country as a whole
+#percentage of farmers markets that have facebook overall
+#47.16058
+(sum(is.na(social_media$facebook) == FALSE)) / (length(social_media$facebook)) * 100
+
+#proportion of farmers markets that have twitter overall
+#11.6991
+(sum(is.na(social_media$twitter) == FALSE))  / (length(social_media$twitter)) * 100 
+
+#proportion of farmers markets which have both facebook and twitter overall
+#10.47001
+(sum(social_media$twitter %in% social_media$facebook == FALSE)) / (length(social_media$twitter))  * 100
+
+#Look at social media presence at state level
+#facebook presence per state
+facebook_presense<- social_media %>%
+  group_by(state) %>%
+  filter(is.na(facebook)==TRUE) %>%
+  #use n = n() with summarise to count oberservations
+  summarise(n = n())
+
+#twitter presence per state
+twitter_presence <- social_media %>%
+  group_by(state) %>%
+  filter(is.na(twitter)==TRUE) %>%
+  #use n = n() with summarise to count oberservations
+  summarise(n = n())
+
+#both presence per state
+both_presence <- social_media %>%
+  group_by(state) %>%
+  filter(twitter %in% facebook == TRUE) %>%
+  #use n = n() with summarise to count oberservations
+  summarise(n = n())
+
+#total obersrvations per state
+total_number_observations_per_state <- social_media %>%
+  group_by(state) %>%
+  
+  #use n = n() with summarise to count oberservations
+  summarise(n = n())
+
+#use cbind to get different dataframes together
+social_media_presence <- cbind.data.frame(facebook_presense$state, facebook_presense$n, twitter_presence$n, both_presence$n, total_number_observations_per_state$n)
+
+#rename columns
+colnames(social_media_presence) <- c("state", "facebook", "twitter", "both", "total observations per state")
+
+#calculate percentages for social media presence
+social_media_presence$facebook <- ((social_media_presence$`total observations per state` - social_media_presence$facebook) / social_media_presence$`total observations per state`) * 100
+
+social_media_presence$twitter <- ((social_media_presence$`total observations per state` - social_media_presence$twitter) / social_media_presence$`total observations per state`) * 100
+
+social_media_presence$both <- ((social_media_presence$`total observations per state` - social_media_presence$both) / social_media_presence$`total observations per state`) * 100
+
+social_media_presence
+```
+
+##Question 4 Some of the farmer market names are quite long. Can you make them shorter by using the forcats::fct_recode function? Create a plot that demonstrates the number of farmers markets per location type. The locations should be ordered in descending order where the top of the graph will have the one with the highest number of markets.
+
+```{r}
+#Cannot shorten them to have unique names using forcats::fct_recode because a sequence of named character vectors need to be passed. Was not able to pass a function to it.  Word from stringr can be used to only show first two "words", ie:
+
+fmarkets$MarketName<- word(fmarkets$MarketName, 1, 2)
+
+#explore the factor Location and set levels to unique locations
+fmarkets$Location<-factor(fmarkets$Location, levels = unique(fmarkets$Location))
+summary(fmarkets$Location)
+
+#use fct_explicit_na to rename the NAs as missing and account for them
+location_summary<-fct_explicit_na(fmarkets$Location, na_level = "(Missing)")
+location_summary<-as.data.frame(table(location_summary))
+
+#name columns
+colnames(location_summary)<- c("LocationType", "Freq")
+
+#plot and arrange in descending order
+ggplot(location_summary, aes(Freq, fct_reorder(LocationType, Freq))) + geom_point()
+
+```
+##Question 5  Write code to sanity check the kyfprojects data. For example, does Program Abbreviation always match Program Name for all the rows? (Try thinking of your own rules, too.)
+
+```{r}
+#create another columb using gsub to match Program names and abbreviations
+kyfp$Program_Name_check<- gsub('\\b([A-Z])\\pL|.','\\1', kyfp$`Program Name`, ignore.case = FALSE, perl = TRUE)
+
+#total matches
+sum(kyfp$`Program Abbreviation` %in% kyfp$Program_Name_check)
+
+#create condition to check which rows do not match
+condition <- kyfp$`Program Abbreviation` ==  kyfp$Program_Name_check
+non_Identical_Rows <- kyfp[!condition,]
+row_Numbers<-which(!condition)
+non_Identical_Rows
+```
+
+some of the Program abbreviations are different lengths, but for the most part they follow a pattern of using the first capital letter of each word.  Next we can check if the cities are matched with the correct states using the data set us.cities.  
+
+```{r}
+#load maps library
+library(maps)
+
+#make a copy of the dataset us.cities
+#it does not hold all towns, but we can do a check for some of the cities and states in the kyfp dataset
+cities_in_us<-us.cities
+kyfp$kyfp_city_state_combined<-paste(kyfp$Town, kyfp$State)
+
+#get total number of matches
+sum(cities_in_us$name %in% kyfp$kyfp_city_state_combined)
+
+#Create condition to find out which rows match to cross check
+condition <- cities_in_us$name %in% kyfp$kyfp_city_state_combined
+Identical_Rows <- condition == TRUE
+row_Numbers<-which(condition)
+Identical_Rows
+```
+
+When we check which cities and states they are we can see that they match the city and state from the us.cities dataset which we have copied and renamed cities_in_us.
+
+

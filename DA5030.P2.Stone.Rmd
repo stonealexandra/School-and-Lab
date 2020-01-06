@@ -1,0 +1,542 @@
+---
+title: "Practicum 02"
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+  pdf_document: default
+date: "02/11/2018"
+---
+
+Group members:
+Khoa Luu;
+Alexandra Stone;
+Harini PrasannaSrinivasan
+
+Course: DA5030
+Semester: Fall 2018
+
+Problem 1
+(a) Download the data set Census Income Data for Adults along with its explanation. Note that the data file does not contain header names; you may wish to add those. The description of each column can be found in the data set explanation. 
+```{r}
+#loading the dataset
+library(data.table)
+adult <- fread("http://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data",
+               sep = ",",header = FALSE)
+colnames(adult) <- c("age","workclass","fnlwgt","education",
+                     "education-num","martial-status","occupation",
+                     "relationship","race","sex","capital-gain",
+                     "capital-loss","hours-per-week","native-country","class")
+
+#assigning improper data as NA
+adult[adult == "?"] <- NA
+head(adult)
+```
+(b). Explore the data set as you see fit and that allows you to get a sense of the data and get comfortable with it. Is there distributional skew in any of the features? Is there a need to apply a transform? 
+```{r}
+library(psych)
+pairs.panels(adult[,c(1,3,5,14)])
+```
+From the looks of it, age and fnlwgt both are skewed whereas hours-per-week and education-num appear fine.
+```{r}
+#log transform
+hist(log(adult$age))
+
+#square root transform
+hist(sqrt(adult$fnlwgt))
+```
+
+After the tranform, both look much more normally distributed.
+
+(c).Create a frequency and then a likelihood table for the categorical features in the data set. Build your own Naive Bayes classifier for those features
+```{r}
+#index for class less than or equal to 50K
+index <- adult[,class == "<=50K"]
+
+#if <=50K, then yes else no
+yes <- adult[index,]
+no <- adult[!index,]
+
+#prob of getting yes
+pyes <- nrow(yes)/length(index)
+
+#prob of getting no
+pno <- nrow(no)/length(index)
+
+#getting the likelihood table
+get_lik <- function(x)
+{
+  temp <- table(x)
+  temp/sum(temp)
+}
+
+#likelihood table for <=50K
+yes_lik <- apply(yes[,c(2,4,6,7,8,9,10,14,15)],2,get_lik)
+yes_lik
+
+#likelihood table for <=50K
+no_lik <- apply(no[,c(2,4,6,7,8,9,10,14,15)],2,get_lik)
+no_lik
+```
+
+(d).Predict the binomial class membership for a white female adult who is a federal government worker with a bachelors degree who immigrated from India. 
+
+```{r}
+#probability for <=50K 
+p_less50k <- (yes_lik$race["White"] * yes_lik$sex["Female"]
+              * yes_lik$workclass["Federal-gov"]
+              * yes_lik$education["Bachelors"]
+              * yes_lik$`native-country`["India"])
+
+p_less50k <- p_less50k * pyes
+
+#probabilty for >50K
+p_more50k <- (no_lik$race["White"] * no_lik$sex["Female"]
+              * no_lik$workclass["Federal-gov"]
+              * no_lik$education["Bachelors"]
+              * no_lik$`native-country`["India"])
+
+p_more50k <- p_more50k * pno
+
+#naive bayes prediction
+binom_class <- p_more50k/(p_more50k + p_less50k)
+
+#prob of class being >50K
+binom_class
+```
+
+(e).Perform 10-fold cross validation on your algorithm to tune it and report the final accuracy results.
+```{r}
+#removing NA from the test and training sets
+adult<-adult[sample(nrow(adult)),]
+adult <- na.omit(adult)
+
+#index for 10-folf cv
+folds <- cut(seq(1,nrow(adult)),breaks=10,labels=FALSE)
+
+#counter
+count <- 1
+prob <- vector()
+
+#applying 10-fold cross-validation
+for (i in 1:10) {
+  
+  #getting the test index
+  testIndexes <- which(folds==i,arr.ind=TRUE)
+  
+  #splitting data into test and training
+  testset <- adult[testIndexes,]
+  trainingset <- adult[-testIndexes,]
+  
+  #index for the two classes
+  index <- trainingset[,class == "<=50K"]
+
+  #splitting training set into two by <=50K, >50K classes
+  yes <- trainingset[index,]
+  no <- trainingset[!index,]
+  
+  #prob of getting a yes
+  pyes <- nrow(yes)/length(index)
+  
+  #prob of getting a no
+  pno <- nrow(no)/length(index)
+  
+  #likelihood table of yes
+  yes_lik <- apply(yes[,c(2,4,6,7,8,9,10,14,15)],2,get_lik)
+  
+  #likelihood table of no 
+  no_lik <- apply(no[,c(2,4,6,7,8,9,10,14,15)],2,get_lik)
+  
+  #loop to run algorithm for every testset case
+  for (j in 1:nrow(testset)) {
+    
+    #to deal with NA incase a factor occurs in testset but not in training set
+    # for class >50K
+    #laplace = 1 / nrows_trainingset+1
+    #idea: if there were 1 most observation in training set, it would occur in that
+    if(is.na(no_lik$`native-country`[testset$`native-country`[j]]))
+    {
+      no_lik$`native-country`[testset$`native-country`[j]] <- 1/(nrow(trainingset) + 1)
+    }
+    if (is.na(no_lik$workclass[testset$workclass[j]]))
+    {
+      no_lik$workclass[testset$workclass[j]] <- 1/(nrow(trainingset) + 1)
+    }
+    if (is.na(no_lik$education[testset$education[j]]))
+    {
+      no_lik$education[testset$education[j]] <- 1/(nrow(trainingset) + 1)
+    }
+    if (is.na(no_lik$`martial-status`[testset$`martial-status`[j]]))
+    {
+      no_lik$`martial-status`[testset$`martial-status`[j]] <- 1/(nrow(trainingset) + 1)
+    }
+    if (is.na(no_lik$occupation[testset$occupation[j]]))
+    {
+      no_lik$occupation[testset$occupation[j]] <- 1/(nrow(trainingset) + 1)
+    }
+    if (is.na(no_lik$relationship[testset$relationship[j]]))
+    {
+      no_lik$relationship[testset$relationship[j]] <- 1/(nrow(trainingset) + 1)
+    }
+    if (is.na(no_lik$race[testset$race[j]]))
+    {
+      no_lik$race[testset$race[j]] <- 1/(nrow(trainingset) + 1)
+    }
+    if (is.na(no_lik$sex[testset$sex[j]]))
+    {
+      no_lik$sex[testset$sex[j]] <- 1/(nrow(trainingset) + 1)
+    }
+    
+    #to deal with NA incase a factor occurs in testset but not in training set
+    #for class <=50K
+    if(is.na(yes_lik$`native-country`[testset$`native-country`[j]]))
+    {
+      yes_lik$`native-country`[testset$`native-country`[j]] <- 1/(nrow(trainingset) + 1)
+    }
+    if (is.na(yes_lik$workclass[testset$workclass[j]]))
+    {
+      yes_lik$workclass[testset$workclass[j]] <- 1/(nrow(trainingset) + 1)
+    }
+    if (is.na(yes_lik$education[testset$education[j]]))
+    {
+      yes_lik$education[testset$education[j]] <- 1/(nrow(trainingset) + 1)
+    }
+    if (is.na(yes_lik$`martial-status`[testset$`martial-status`[j]]))
+    {
+      yes_lik$`martial-status`[testset$`martial-status`[j]] <- 1/(nrow(trainingset) + 1)
+    }
+    if (is.na(yes_lik$occupation[testset$occupation[j]]))
+    {
+      yes_lik$occupation[testset$occupation[j]] <- 1/(nrow(trainingset) + 1)
+    }
+    if (is.na(yes_lik$relationship[testset$relationship[j]]))
+    {
+      yes_lik$relationship[testset$relationship[j]] <- 1/(nrow(trainingset) + 1)
+    }
+    if (is.na(yes_lik$race[testset$race[j]]))
+    {
+      yes_lik$race[testset$race[j]] <- 1/(nrow(trainingset) + 1)
+    }
+    if (is.na(yes_lik$sex[testset$sex[j]]))
+    {
+      yes_lik$sex[testset$sex[j]] <- 1/(nrow(trainingset) + 1)
+    }
+    
+    #probability for <=50K 
+    p_less50k <- yes_lik$workclass[testset$workclass[j]] * yes_lik$education[testset$education[j]] *   yes_lik$`martial-status`[testset$`martial-status`[j]] * yes_lik$occupation[testset$occupation[j]] * yes_lik$relationship[testset$relationship[j]] * yes_lik$race[testset$race[j]] * yes_lik$sex[testset$sex[j]] *yes_lik$`native-country`[testset$`native-country`[j]] * pyes
+    
+    #probability for >50K 
+    p_more50k <- no_lik$workclass[testset$workclass[j]] * no_lik$education[testset$education[j]] *   no_lik$`martial-status`[testset$`martial-status`[j]] * no_lik$occupation[testset$occupation[j]] * no_lik$relationship[testset$relationship[j]] * no_lik$race[testset$race[j]] * no_lik$sex[testset$sex[j]] * no_lik$`native-country`[testset$`native-country`[j]] * pno
+    
+    #naive bayes predictions
+    prob[count] <- p_more50k/(p_more50k + p_less50k)
+    count <-count + 1
+  }
+
+}
+#accuracy of the model
+pred_class <- ifelse(prob > 0.5,">50K","<=50K")
+sum(pred_class == adult$class)/nrow(adult)
+
+library(gmodels)
+CrossTable(pred_class,adult$class)
+```
+
+
+#Problem 2
+##After reading the case study background information, using the UFFI data set, answer these questions:
+
+1. Are there outliers in the data set? How do you identify outliers and how do you deal with them? Remove them but create a second data set with outliers removed. Keep the original data set.
+```{r}
+library(readxl)
+uffidata <- read_excel("C:/Users/user/Desktop/uffidata.xlsx")
+View(uffidata)
+summary(uffidata)
+sd_uffi_sale<-sd(uffidata$`Sale Price`)
+#40340.92
+mean_uffi_sale<-mean(uffidata$`Sale Price`)
+#124449.49
+#1.5*40340.92 = 60511.38
+over<-124449.49+60511.38
+under<-124449.49-60511.38
+outliers_over<-which(uffidata$`Sale Price` > over)
+outliers_under<-which(uffidata$`Sale Price` < under)
+
+#outliers_over cases 91 through 99
+
+#remove outliers and put into a new dataset
+outliers_removed_uffidata<-uffidata[-c(91:99),]
+```
+
+2. What are the correlations to the response variable and are there colinearities? Build a full correlation matrix.
+```{r}
+Matrix_cor<-cor(outliers_removed_uffidata[c("Sale Price", "UFFI IN",
+                                            "Brick Ext", "45 Yrs+",
+                                            "Bsmnt Fin_SF", "Lot Area",
+                                            "Enc Pk Spaces", "Living Area_SF",
+                                            "Central Air", "Pool")])
+```
+
+3. What is the ideal multiple regression model for predicting home prices in this data set using the data set with outliers removed? Provide a detailed analysis of the model, including Adjusted R-Squared, RMSE, and p-values of principal components. Use backward elimination by p-value to build the model.
+```{r}
+#Observation can be eliminated right away since it is not relevant
+UFFI_model<-lm(`Sale Price` ~. -Observation , data = outliers_removed_uffidata)
+summary(UFFI_model)
+
+#remove each variable one by one using highest p value
+UFFI_model<-lm(`Sale Price` ~. -Observation -`45 Yrs+` ,
+               data = outliers_removed_uffidata)
+summary(UFFI_model)
+
+UFFI_model<-lm(`Sale Price` ~. -Observation -`45 Yrs+` -`Central Air` ,
+               data = outliers_removed_uffidata)
+summary(UFFI_model)
+
+UFFI_model<-lm(`Sale Price` ~. -Observation -`45 Yrs+` -`Central Air` -`Brick Ext` ,
+               data = outliers_removed_uffidata)
+summary(UFFI_model)
+
+UFFI_model<-lm(`Sale Price` ~. -Observation -`45 Yrs+` -`Central Air` -`Brick Ext` -`Lot Area`,
+               data = outliers_removed_uffidata)
+summary(UFFI_model)
+
+UFFI_model<-lm(`Sale Price` ~. -Observation -`45 Yrs+` -`Central Air` -`Brick Ext` -`Lot Area` -`UFFI IN`,
+               data = outliers_removed_uffidata)
+summary(UFFI_model)
+
+#Multiple R-squared:  0.6203	
+#Adjusted R-squared:  0.5977 
+#p-value: 2.312e-16
+
+#assign summary to variable and look at coefficients to build equation
+um<-summary(UFFI_model)
+um$coefficients
+um$coefficients[[1]]
+
+#write as equation
+#final_UFFI_model<-um$coefficients[[1]] + um$coefficients[[2]]*`Year Sold`
+#+ um$coefficients[[3]]*`Bsmnt Fin_SF` + um$coefficients[[4]]*`Enc Pk Spaces`
+#+ um$coefficients[[5]]*`Living Area_SF` + um$coefficients[[6]]*Pool
+```
+
+4. On average, by how much do we expect UFFI to change the value of a property?
+According to our model, UFFI presence does not contribute significantly to the value of the property.
+
+
+5. If the home in question is older than 45 years old, doesn't have a finished basement, has a lot area of 4000 square feet, has a brick exterior, 1 enclosed parking space, 1480 square feet of living space, central air, and no pool, what is its predicted value and what are the 95% confidence intervals of this home with UFFI and without UFFI?
+
+```{r}
+#new data
+nd <- c(1,1,0,4000,1,1480,1,0)
+
+#model
+UFFI_model<-lm(`Sale Price` ~. -Observation -`Year Sold` , data = outliers_removed_uffidata)
+summary(UFFI_model)
+#assign summary to variable and look at coefficients to build equation
+um<-summary(UFFI_model)
+um$coefficients
+
+#write as equation
+#final_UFFI_model<-um$coefficients[[1]] + um$coefficients[[2]]*`UFFI IN` +
+#um$coefficients[[3]]*`Brick Ext` + um$coefficients[[4]]*`45 Yrs+` +
+#um$coefficients[[5]]*`Bsmnt Fin_SF` + um$coefficients[[6]]*`Lot Area` +
+#um$coefficients[[7]]*`Enc Pk Spaces` + um$coefficients[[8]]*`Living Area_SF` +
+#um$coefficients[[9]]*`Central Air`+ um$coefficients[[10]]*Pool
+
+with_UFFI<-um$coefficients[[1]] + um$coefficients[[2]]*1 +
+  um$coefficients[[3]]*1 + um$coefficients[[4]]*1 + 
+  um$coefficients[[5]]*0 + um$coefficients[[6]]*4000 +
+  um$coefficients[[7]]*1 + um$coefficients[[8]]*1480 +
+  um$coefficients[[9]]*1 + um$coefficients[[10]]*0
+
+with_UFFI
+#134802
+
+lowerCI<-with_UFFI - 1.96*1.933
+
+upperCI<-with_UFFI + 1.96*1.933
+
+#CI: (134798, 134806 )
+
+no_UFFI<-um$coefficients[[1]] + um$coefficients[[3]]*1 +
+  um$coefficients[[4]]*1 + um$coefficients[[5]]*0 +
+  um$coefficients[[6]]*4000 + um$coefficients[[7]]*1 +
+  um$coefficients[[8]]*1480 + um$coefficients[[9]]*1 +
+  um$coefficients[[10]]*0
+
+no_UFFI
+#147725
+
+lowerCI<-no_UFFI - 1.96*1.933
+
+upperCI<-no_UFFI + 1.96*1.933
+
+#CI: (147722,147730)
+
+#The predicted value for a home with UFFI is 134802 and the CI is (134798, 134806).
+#The predicted value for a home without UFFI is 147725 and the CI is (147722,147730)
+```
+
+Problem 3
+
+1. Impute any missing values for the age variable using an imputation strategy of your choice. State why you chose that strategy and what others could have been used and why you didn't choose them.
+```{r}
+#install.packages("Hmisc")
+library(Hmisc)
+library(caret)
+
+titanic <- read.csv("C:/Users/user/Desktop/titanic_data.csv", stringsAsFactors = F)
+
+titanic <- titanic[-1]
+
+titanic$Age <- round(with(titanic, impute(Age,mean)),0)
+#adapted from StackOVerflow
+#there are several package can be used for imputing missng value. 
+#In this assignment, Hmisc package were used to impute missing Age.
+#The impute function determine the mean Age and impute the missing data with mean.
+#This is the simplest package to use. 
+#There are other packages available like mice package but the computing time was longer. 
+
+#the following code was from [6]
+#used to extract titles from the name column
+
+# Grab title from passenger names
+titanic$Title <- gsub('(.*, )|(\\..*)', '', titanic$Name)
+
+# Show title counts by sex
+table(titanic$Sex, titanic$Title)
+
+# Titles with very low cell counts to be combined to "rare" level
+rare_title <- c('Dona', 'Lady', 'the Countess','Capt', 'Col', 'Don', 
+                'Dr', 'Major', 'Rev', 'Sir', 'Jonkheer')
+
+# Also reassign mlle, ms, and mme accordingly
+titanic$Title[titanic$Title == 'Mlle']  <- 'Miss' 
+titanic$Title[titanic$Title == 'Ms']          <- 'Miss'
+titanic$Title[titanic$Title == 'Mme']         <- 'Mrs' 
+titanic$Title[titanic$Title %in% rare_title]  <- 'Rare Title'
+
+# Show title counts by sex again
+table(titanic$Sex, titanic$Title)
+
+#convert to numerical value
+titanic$Title[titanic$Title == 'Mr']  <- 1 
+titanic$Title[titanic$Title == 'Miss']          <- 2
+titanic$Title[titanic$Title == 'Mrs']         <- 3
+titanic$Title[titanic$Title == 'Master']         <- 4
+titanic$Title[titanic$Title == 'Rare Title']    <- 5
+
+titanic$Title <- as.integer(titanic$Title) 
+
+#since the code has transformed the name feature to title, name feature can be removed
+titanic <- titanic[-3]
+
+# Create a family size variable including the passenger themselves
+titanic$Fsize <- titanic$SibSp + titanic$Parch + 1
+
+titanic <- titanic[-5]
+
+titanic <- titanic[-5]
+
+#create dummy code for Sex feature
+titanic$dSex <- as.numeric(titanic$Sex == "male")
+titanic <- titanic[-3]
+
+
+#inspect the embarked feature
+table(titanic$Embarked)
+
+#the Embarked feature also has missing value.The missing value was imputed using mode. 
+
+titanic$Embarked[titanic$Embarked == 'C']  <- 1 
+titanic$Embarked[titanic$Embarked == 'Q']  <- 2
+titanic$Embarked[titanic$Embarked == 'S']  <- 3
+
+titanic$Embarked <- as.integer(titanic$Embarked) 
+
+#adapted from [7]
+mode.t <- function(v) {
+  uniqv <- unique(v)
+  uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+mode.t(titanic$Embarked)
+#impute missing value
+titanic$Embarked[c(62, 830)] <- 3
+
+#remove the ticket feature
+titanic <- titanic[-4]
+#remove the cabin feature
+titanic <- titanic[-5]
+```
+
+2. Divide the provided Titanic Survival Data into two subsets: a training data set and a test data set. Use whatever strategy you believe it best. Justify your answer.
+```{r}
+#split the data for training
+set.seed(10)
+titanic_split <- createDataPartition(y=titanic$Survived,p=0.80, list=FALSE)
+titanic_Train <- titanic[titanic_split,]
+titanic_Test <-  titanic[-titanic_split,]
+#createDataPartition from caret package is commonly used function
+#to create testing and training data set thus chosen. 
+#The function can split data by percentile thus a 0.80 percentile is chosen,
+#80% of the data will go into the training data set and the remaining 20 will be in testing dataset.
+
+```
+
+3. Construct a logistic regression model to predict the probability of a passenger surviving the Titanic accident. Test the statistical significance of all parameters and eliminate those that have a p-value > 0.05 using stepwise backward elimination.
+```{r}
+#build the logistic regression
+titanic.glm <- glm(Survived ~ ., data = titanic_Train, family = binomial())
+
+summary(titanic.glm)
+
+step(titanic.glm, direction = "backward")
+
+#while the fare feature shows not to be signifcant in the summary, 
+#performing backward elimination shows that the feature support
+#the model with a higher than the model AIC. 
+#Since it p value is higher than 0.05, it will be removed from the final model
+
+titanic.glm.1 <- glm(Survived ~ Pclass + Age + 
+                       Embarked + Title + Fsize + dSex,
+                     data = titanic_Train, family = binomial())
+
+summary(titanic.glm.1) 
+# not much different from the previous as essentially 
+#the fare features does supports the model.
+```
+4. State the model as a regression equation.
+
+P(Survived) = 1/(1+e^-(5.355828 - (1.039035 * Pclass) - (0.039670 * Age) - (0.331651 * Embarked) + (0.406780 * Title) - (0.343925 * Fsize) - (2.491733 * dSex)))
+
+5. Test the model against the test data set and determine its prediction accuracy (as a percentage correct).
+
+```{r}
+titanic_aval <-predict(titanic.glm.1,titanic_Test,type = "response")
+#for the p value generated, if greater than 0.5, will be considered as 1
+titanic_aval <- ifelse(titanic_aval > 0.5,1,0)
+#identify the mismatch from prediction
+misClasificError_titanic <- mean(titanic_aval != titanic_Test$Survived)
+print(paste('Accuracy',1-misClasificError_titanic))
+#the model has an acuracy of 84% which is pretty decent.
+```
+
+#Problem 4
+
+1. Elaborate on the use of kNN and Naive Bayes for data imputation. Explain in reasonable detail how you would use these algorithms to impute missing data and why it can work.
+
+There are  3 different types of missing values : Missing Completely At Random (MCAR), Missing At Random (MAR), Missing Not At Random (MNAR) and kNN can be use for data imputation for any of these scenarios Knn assumes that the misisng value can be approximated by the value of the points nearby. The article uses an example of identifying people with depression given the variables of gender and income assuming thay people with similar level of income and gender will have same level of depression. suppose we need to impute missng data on the level of depression, we could approximate the level of depression by look for the k nearest neighbors of the income and gender of the entry with missing data.
+
+kNN can be used for data imputation by finding the missing data's "nearest neighbors". For example, if we are missing a value for whether or not a house has a pool in the UFFI data set, by looking at it's distance from other houses, we can infer whether or not it has a pool. The presence of a pool increases the value of a home, so if the rest of the variables were similar between HouseA (missing pool value), HouseB (no pool), and HouseC (with pool), and HouseA has a sale price of 200,000, HouseB has a sale price of 100,000 and House C has a sale price of 176,000, we can assume that HouseA has a pool because it's nearest neighbor would be HouseC. 
+
+According to Priya.S, Dr.Antony Selvadoss Thanamani, Naive Bayes can be used for imputation by assigning the order of the variable to be treated then using the classifier to estimate the missing data. In Naive Bayes, the algorithm impute missing data by first decide the order of the attribute using set of measurements. The Classifer interate through repeatedly to replace missing data from the first attribute and then on to the next. 
+
+
+References
+1. https://www.saedsayad.com/naive_bayesian.htm
+2. https://stats.stackexchange.com/questions/61090/how-to-split-a-data-set-to-do-10-fold-cross-validation
+3. http://www.ijircce.com/upload/2017/teccafe/39_IITC_048.pdf
+4. https://towardsdatascience.com/the-use-of-knn-for-missing-values-cf33d935c637
+5. http://www.ijtrd.com/papers/IJTRD8371.pdf
+6. https://rstudio-pubs-static.s3.amazonaws.com/202517_d1c1e3e9101d49b1a0135a422a9b3748.html
+7. https://www.tutorialspoint.com/r/r_mean_median_mode.htm

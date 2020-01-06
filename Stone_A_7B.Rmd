@@ -1,0 +1,88 @@
+---
+title: "Stone_A_7B.Rmd"
+author: "Alexandra Stone"
+date: "October 21, 2019"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#set working directory to desktop 
+#setwd("c:/Users/user/Desktop")
+
+#load necessary libraries
+library(RCurl)
+library(ROAuth)
+library(streamR)
+library(twitteR)
+
+#Download the certificate needed for authentication. This creates a certificate file on the desktop
+download.file(url="http://curl.haxx.se/ca/cacert.pem",
+destfile="cacert.pem")
+
+#Create a file to collect all the Twitter JSON data received from the API call
+outFile <- "tweets_sample.json"
+
+#Set the configuration details to authorize your application to access Twitter data
+requestURL <- "https://api.twitter.com/oauth/request_token"
+accessURL <- "https://api.twitter.com/oauth/access_token"
+authURL <- "https://api.twitter.com/oauth/authorize"
+consumerKey <- "CMYIh4nm4eLrf8lFVAgQQVwug"
+consumerSecret <- "xyPUFiPVXro123SnXzzKLxmAPxjRGeh78Lgw4H3QRZSSSug5EM"
+accessToken <- "1186306587872223233-zgVTQ7dumnE5lBe0kiEyXsqn8vAu9B"
+accessTokenSecret<- "jA4lfIRKEMYQWVjzDSBIdVputKGShR4tVmXg74Vtu3e0s"
+
+#Authenticate user via OAuth handshake and save the OAuth certificate to the local disk for future connections. OAuth is an authentication protocol that enables a third-party application to obtain limited access to an HTTP service without sharing passwords.
+my_oauth <- OAuthFactory$new( consumerKey=consumerKey,
+                              consumerSecret=consumerSecret,
+                              requestURL=requestURL,
+                              accessURL=accessURL,
+                              authURL=authURL)
+                             
+#my_oauth$handshake(cainfo="cacert.pem")
+#Error in function (type, msg, asError = TRUE) : Unknown SSL protocol error in connection to api.twitter.com:443
+```
+
+First suggestion: Reinstall packages
+I reinstalled the 4 listed packages and reran the code.  It still produced the same error.
+
+Second suggestion: Check to make sure the keys are correct
+I double checked the keys and recopy and pasted them into my code.  I reran the code, and it produced the same error.
+
+Third suggestion: Update R.
+I updates R using installr.  My RStudio was not the latest version.  I then reinstalled the packages.  I reran the code, and it still produced the same error.
+
+Fourth suggestion: Regenerate the keys
+I regenerated the keys, copy and pasted them into the code and ran the code.  It produced the same error.
+
+Fifth suggestion: Check if I am able to read data from another URL
+I used the following code to see if I am able to access another URL:
+
+iris <- read.csv(fileURL, header = FALSE, sep = ",", quote = "\"'")
+names(iris) <- c("sepal_length", "sepal_width", "petal_length", "petal_width", "class")
+head(iris)
+
+I was able to see read data from the website, which told me that I am able to connect to a URL and the issue I am having isn't due to me not being able to connect to every URL.
+
+Sixth suggestion: Set SSL certs globally
+I ran:
+
+options(RCurlOptions = list(cainfo = system.file("CurlSSL", "cacert.pem", package = "RCurl")))
+
+The same error was produced.
+
+Seventh suggestion: Update pem file
+I used the following code:
+
+system( paste0( "curl http://curl.haxx.se/ca/cacert.pem -o " , tempdir() , "/cacert.pem" ) )
+my_oauth$handshake( cainfo = paste0( tempdir() , "/cacert.pem" ) )
+
+This did not work, and when looking on stackoverflow it appears it also didn't work with others who used download.file() earlier in their code.
+
+Eight suggestion: Try running your code outside of RStudio
+I just opened  up an R console instead of using RStudio and reran my code.  The same error was produced.  

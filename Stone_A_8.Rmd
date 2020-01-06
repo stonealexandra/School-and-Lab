@@ -1,0 +1,330 @@
+---
+title: "Stone_A_8.Rmd"
+author: "Alexandra Stone"
+date: "October 28, 2019"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Assignment 8
+
+##1. (20 points) Retrieve the contents of the first webpage for the yelp search as specified in Assignment 7 and write R statements to answer the following questions on the retrieved contents:
+
+###How many nodes are direct descendents of the HTML `<body>` element (the actual visible content of a web page)?
+
+There are 39 nodes that are direct descentdents of the HTML <body> element.
+
+###What are the nodes names of the direct descendents of the `<body>`?
+
+[1] "script"   "noscript" "script"   "script"   "div"      "script"   "noscript" "div"      "script"  
+[10] "noscript" "script"   "noscript" "script"   "script"   "script"   "script"   "script"   "script"  
+[19] "script"   "script"   "script"   "script"   "script"   "script"   "script"   "script"   "script"  
+[28] "script"   "script"   "script"   "script"   "script"   "noscript" "script"   "div"      "noscript"
+[37] "script"   "noscript" "script"
+
+###How many of these direct descendents have an `id` attribute?
+
+Five of the direct descendents have an 'id' attribute
+
+###What is the css selector to select restaurants that are advertisements? (You may not see the ads if you are logged in on Yelp or have an ad blocker running.)
+
+.lemon--li__373c0__1r9wz:nth-child(2) .link-size--inherit__373c0__2JXk5
+
+```{r}
+#set working directory and load necessary libraries
+#setwd("c:/Users/user/Desktop/Data Mining")
+library(rvest)
+library(selectr)
+library(dplyr)
+library(stringr)
+
+#1st page
+# Store web url
+page <- read_html("https://www.yelp.com/search?find_desc=burgers&start=0&l=Boston,MA")
+
+# list the children of the <html> element (the whole page)
+html_children(page)
+
+# get the root of the actual html body
+root <- html_node(page, 'body')
+root
+
+#get the child nodes
+rootChildren<-html_children(root)
+
+#get the names of the child nodes
+html_name(rootChildren)
+
+#get id attribute from direct descendants
+idAttr<-html_attr(rootChildren, "id")
+sum(!is.na(idAttr))
+
+#css selector for ads
+adsYelp<-page %>% 
+    html_nodes(".lemon--li__373c0__1r9wz:nth-child(2) .link-size--inherit__373c0__2JXk5") %>%
+    html_text(trim=T)
+
+```
+##2. Modify following parameterized function `get_yelp_sr_one_page` to extract a list of businesses on Yelp, for a specific search keyword, a specific location and a specific page of results.
+```{r}
+#yelp page sets of 30
+#page 2 starts with 30, page 3 starts with 60 etc
+get_yelp_sr_one_page <- function(keyword, loc="Boston, MA", page="30") {
+  # Scrape Yelp's search results page for a list of businesses 
+  # Args:
+  #   keyword - the keyword for a search query, the "&find_desc=" parameter
+  #   loc - the location to search for, the "&find_loc=" parameter in the url
+  # Return:
+  #   A data frame containing burger restaurant contents in one search
+  #   results.
+  
+  # parameterize the search results URL
+  yelp_url <- 'https://www.yelp.com/search?find_desc=%s&find_loc=%s&start=%s'
+  # `sprintf` replace "%s" with positional arguments following the string
+  # `URLencode` ensures blank spaces in the keywords and location are
+  # properly encoded, so that yelp will be able to recognize the URL
+  yelp_url <- sprintf(yelp_url, URLencode(keyword), URLencode(loc), URLencode(page))
+  
+  yelpsr <- read_html(yelp_url)
+  
+  # `html_nodes` allow us to extract pieces from an html document using
+  # XPath or css selectors. Most of the time, you would only use css selectors
+  # since they are much easier to interpret.
+  
+  # Here we use `.regular_search-result` to exclude ad entries
+  # since ad entries do not have this class.
+  # We single out the items first so we can safely use simpler selectors
+  # to extract information inside each item
+  items <- yelpsr %>%
+    html_nodes(".mainContentContainer__373c0__32Mqa")
+  
+  links <- items %>% html_nodes(".text-color--black-regular__373c0__38bRH .link-size--inherit__373c0__2JXk5")
+  # trim=T (trim = True) removes whitespaces between html text
+  names <- links %>% html_text(trim=T)
+  urls <-  links %>%
+    html_attr("href") %>%
+    # cleanup useless url parameters (which are used
+    # by yelp for analytical tracking purpose)
+    str_replace("\\?osq=.*", "")
+  
+  #review URLs
+  reviewLinks <- items %>% html_nodes(".text-color--inherit__373c0__w_15m .link-size--inherit__373c0__2JXk5")
+  reviewUrls <-  reviewLinks %>%
+    html_attr("href") %>%
+    # cleanup useless url parameters (which are used
+    # by yelp for analytical tracking purpose)
+    str_replace("\\?osq=.*", "")
+  reviewUrls<-c("NA", reviewUrls)
+  
+  pricelevels <- items %>%
+    html_nodes(".text-bullet--after__373c0__1ZHaA") %>%  
+    html_text(trim=T)  %>%
+    str_count()
+  
+
+  
+  pricelevels<-append(pricelevels, "NA", after = 2)
+  pricelevels<-append(pricelevels, "NA", after = 10)
+  pricelevels<-append(pricelevels, "NA", after = 11)
+  pricelevels<-append(pricelevels, "NA", after = 14)
+  
+  reviews <- items %>% html_nodes(".alternateStyling__373c0__2ithU") %>%
+    html_text()
+  reviews<-c("NA", reviews)
+  
+  #number of reviews
+  reviewCount <- items %>% html_nodes(".reviewCount__373c0__2r4xT") %>%
+    html_text()
+  reviewCount<-c("NA", reviewCount)
+  
+  #category
+  category<-items %>% 
+    html_nodes(".display--inline__373c0__1DbOG .border-color--default__373c0__2oFDT:nth-child(1) .link-size--default__373c0__1skgq") %>% 
+    html_text(trim=T)
+  category<-category[1:31]
+  
+  #average number of stars
+  stars <- items %>% html_nodes("div.overflow--hidden__373c0__8Jq2I") %>% html_attr("aria-label")
+  stars<-c("NA", stars)
+  
+  # some results might not have neighborhood or address information,
+  # therefore we cannot use selectors to select them into vectors directly.
+  # (you will see a "vector length mismatch" error)
+  
+  # we must collect data item by item for these variables, i.e., go
+  # from a column-wise approach to row-wise.
+  
+  secondary_attrs <- items %>%
+    # <div class="secondary-attributes"> is the parent of the neighborhood and address
+    # attributes. it is unlikely that an item does not have this section at all.
+    html_nodes('.secondaryAttributes__373c0__7bA0w') %>%
+  purrr::map(function(items) {
+    # collect those secondary attributes one by one
+    # if an attribute is missing, it will be recorded as NA.
+    tibble(
+      neighborhood = items %>%
+        html_node('.u-space-b1 .border-color--default__373c0__2oFDT .border-color--default__373c0__2oFDT .text-align--right__373c0__3ARv7') %>%
+        html_text(trim=T),
+      address = items %>%
+        html_node('.text-align--right__373c0__3ARv7 .lemon--span__373c0__3997G') %>%
+        html_text(trim=T),
+      phone = items %>%
+        html_node('.text-align--right__373c0__3fmmn > .border-color--default__373c0__2oFDT:nth-child(1)') %>%
+        html_text(trim=T)
+    )
+  }) %>%
+    # merge rows
+    bind_rows()
+  
+  # return a data frame
+  distinct(tibble(
+    name = names,
+    url = urls,
+    reviewCount = reviewCount,
+    reviews = reviews,
+    stars = stars,
+    price = pricelevels,
+    reviewUrls = reviewUrls
+  )) %>% cbind(secondary_attrs)
+}
+
+# example output
+yelp_one_page<-get_yelp_sr_one_page("burgers") %>%
+  select(name, address, neighborhood, phone, url, price, stars, reviews, reviewCount, reviewUrls) 
+
+#get rid of first row because there was one advertisement  
+yelp_one_page<-yelp_one_page[-1,]
+```
+
+##(20 points) Write a function that reads multiple pages of the search results of any search keyword and location from Yelp.
+
+##Note that for some queries, Yelp may get a different number of results per page. You would need to either change the way you calculate the URL parameter, or use the `distinct(df)` function to remove duplicate rows.
+
+##4. (10 points) Optimize your function in question 3, add a small wait time (0.5s for example) between each request, so that you don't get banned by Yelp for abusing their website (hint: use `Sys.sleep()`).
+
+```{r}
+#yelp pages start at 30, 60, 90, etc
+get_yelp_sr_any_page <- function(keyword, loc, page) {
+  # Scrape Yelp's search results page for a list of businesses 
+  # Args:
+  #   keyword - the keyword for a search query, the "&find_desc=" parameter
+  #   loc - the location to search for, the "&find_loc=" parameter in the url
+  # Return:
+  #   A data frame containing burger restaurant contents in one search
+  #   results.
+  
+  # parameterize the search results URL
+  yelp_url <- 'https://www.yelp.com/search?find_desc=%s&find_loc=%s&start=%s'
+  # `sprintf` replace "%s" with positional arguments following the string
+  # `URLencode` ensures blank spaces in the keywords and location are
+  # properly encoded, so that yelp will be able to recognize the URL
+  
+  yelp_url <- sprintf(yelp_url, URLencode(keyword), URLencode(loc), URLencode(page))
+  
+  yelpsr <- read_html(yelp_url)
+  
+  # `html_nodes` allow us to extract pieces from an html document using
+  # XPath or css selectors. Most of the time, you would only use css selectors
+  # since they are much easier to interpret.
+  
+  # Here we use `.regular_search-result` to exclude ad entries
+  # since ad entries do not have this class.
+  # We single out the items first so we can safely use simpler selectors
+  # to extract information inside each item
+  items <- yelpsr %>%
+    html_nodes(".mainContentContainer__373c0__32Mqa")
+  
+  links <- items %>% html_nodes(".text-color--black-regular__373c0__38bRH .link-size--inherit__373c0__2JXk5")
+  # trim=T (trim = True) removes whitespaces between html text
+  names <- links %>% html_text(trim=T)
+  urls <-  links %>%
+    html_attr("href") %>%
+    # cleanup useless url parameters (which are used
+    # by yelp for analytical tracking purpose)
+    str_replace("\\?osq=.*", "")
+  
+  #review URLs
+  reviewLinks <- items %>% html_nodes(".text-color--inherit__373c0__w_15m .link-size--inherit__373c0__2JXk5")
+  reviewUrls <-  reviewLinks %>%
+    html_attr("href") %>%
+    # cleanup useless url parameters (which are used
+    # by yelp for analytical tracking purpose)
+    str_replace("\\?osq=.*", "")
+  
+  pricelevels <- items %>%
+    html_nodes(".text-bullet--after__373c0__1ZHaA") %>%  
+    html_text(trim=T)  %>%
+    str_count()
+  
+  reviews <- items %>% html_nodes(".alternateStyling__373c0__2ithU") %>%
+    html_text()
+  
+  #number of reviews
+  reviewCount <- items %>% html_nodes(".reviewCount__373c0__2r4xT") %>%
+    html_text()
+  
+  #category
+  category<-items %>% 
+    html_nodes(".display--inline__373c0__1DbOG .border-color--default__373c0__2oFDT:nth-child(1) .link-size--default__373c0__1skgq") %>% 
+    html_text(trim=T)
+  
+  #average number of stars
+  stars <- items %>% html_nodes("div.overflow--hidden__373c0__8Jq2I") %>% html_attr("aria-label")
+  
+  # some results might not have neighborhood or address information,
+  # therefore we cannot use selectors to select them into vectors directly.
+  # (you will see a "vector length mismatch" error)
+  
+  # we must collect data item by item for these variables, i.e., go
+  # from a column-wise approach to row-wise.
+  
+  secondary_attrs <- items %>%
+    # <div class="secondary-attributes"> is the parent of the neighborhood and address
+    # attributes. it is unlikely that an item does not have this section at all.
+    html_nodes('.secondaryAttributes__373c0__7bA0w') %>%
+  purrr::map(function(items) {
+    # collect those secondary attributes one by one
+    # if an attribute is missing, it will be recorded as NA.
+    tibble(
+      neighborhood = items %>%
+        html_node('.u-space-b1 .border-color--default__373c0__2oFDT .border-color--default__373c0__2oFDT .text-align--right__373c0__3ARv7') %>%
+        html_text(trim=T),
+      address = items %>%
+        html_node('.text-align--right__373c0__3ARv7 .lemon--span__373c0__3997G') %>%
+        html_text(trim=T),
+      phone = items %>%
+        html_node('.text-align--right__373c0__3fmmn > .border-color--default__373c0__2oFDT:nth-child(1)') %>%
+        html_text(trim=T)
+    )
+  }) %>%
+    # merge rows
+    bind_rows()
+  
+  # return a data frame
+  distinct(tibble(
+    name = names,
+    url = urls,
+    reviewCount = reviewCount,
+    reviews = reviews,
+    stars = stars,
+    reviewUrls = reviewUrls
+  )) %>% cbind(secondary_attrs)
+  }
+
+jumpPages<-function(start, end, by){
+  seq(start, end, by)
+}
+
+#example
+for (pages in jumpPages(30,60,30)){
+  df<-get_yelp_sr_any_page("Sushi", "Boston, MA", page = as.character(pages))
+  Sys.sleep(0.5)
+}
+```
+
+

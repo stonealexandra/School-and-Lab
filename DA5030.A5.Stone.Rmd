@@ -1,0 +1,176 @@
+---
+title: "DA5030.A5.Stone"
+author: "Alexandra Stone"
+date: "October 16, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Problem 1
+Build an R Notebook of the bank loan decision tree example in the textbook on pages 136 to 149. Show each step and add appropriate documentation. Note that the provided dataset uses values 1 and 2 in default column whereas the book has no and yes in the default column. To fix any problems replace "no" with "1" and "yes" with "2" in the code that for matrix_dimensions. Alternatively, change the line
+error_cost <- matrix(c(0, 1, 4, 0), nrow = 2, dimnames = matrix_dimensions) to error_cost <- matrix(c(0, 1, 4, 0), nrow = 2)
+
+```{r cars}
+#read in data
+credit <- read.csv("C:/Users/user/Desktop/code files/Machine Learning with R, Second Edition_Code/Chapter 05/credit.csv")
+View(credit)
+str(credit)
+```
+
+Look at output for likely default prredictors
+```{r}
+table(credit$checking_balance)
+table(credit$savings_balance)
+table(credit$default)
+```
+
+Use random sample of the credit data for training by using the sample() function to avoid problems with training and testing data
+```{r}
+set.seed(123)
+train_sample<-sample(1000,900)
+str(train_sample)
+credit_train<-credit[train_sample,]
+credit_test<-credit[-train_sample,]
+prop.table(table(credit_train$default))
+prop.table((table(credit_test$default)))
+```
+exclude credit_train from the training data frame but supply it as the target factor vector for classification
+```{r}
+library(C50)
+credit_model<-C5.0(credit_train[-17], credit_train$default)
+credit_model
+summary(credit_model)
+```
+use predict() to apply the decision tree to test dataset which will create a vector of predicted class values which can be compared to actual class values using CrossTable(). 73 percent accuracy
+```{r}
+credit_pred<-predict(credit_model, credit_test)
+library(gmodels)
+CrossTable(credit_test$default, credit_pred, prop.chisq = FALSE, prop.c = FALSE, prop.r = FALSE, dnn = c('actual default', 'predicted default'))
+```
+
+Use adaptive boosting by adding additional trials parameter indicating the number of separate decision trees to use in the boosted team. 3.8 percent error rate on training data.  
+```{r}
+credit_boost10<-C5.0(credit_train[-17], credit_train$default, trials = 10)
+summary(credit_boost10)
+```
+
+See how it performs on test. Now at 18 percent error rate
+```{r}
+credit_boost_pred10<-predict(credit_boost10, credit_test)
+CrossTable(credit_test$default, credit_boost_pred10, prop.chisq = FALSE, prop.c = FALSE, prop.r = FALSE, dnn = c('actual default', 'predicted default' ) )
+```
+Use a cost matrix to assign a penalty to different types of errors in order to discourage the tree from making more costly mistakes
+```{r}
+matrix_dimensions<-list(c("no", "yes"), c("no", "yes"))
+names(matrix_dimensions)<-c("predicted", "actual")
+
+#1 equals no 2 equals yes
+error_cost <- matrix(c(0, 1, 4, 0), nrow = 2)
+error_cost
+
+credit_cost<-C5.0(credit_train[-17], credit_train$default, costs = error_cost)
+credit_cost_pred<-predict(credit_cost, credit_test)
+CrossTable(credit_test$default, credit_cost_pred, prop.chisq = FALSE, prop.c = FALSE, prop.r = FALSE, dnn = c('actual default', 'predicted default'))
+```
+
+#Problem 2
+Build and R Notebook of the poisonous mushrooms example using rule learners in the textbook on pages 160 to 168. Show each step and add appropriate documentation.
+
+import dataset and drop veil_type because it doesn't vary
+```{r}
+library(rJava)
+library(RWekajars)
+library(RWeka)
+mushrooms <- read.csv("C:/Users/user/Desktop/code files/Machine Learning with R, Second Edition_Code/Chapter 05/mushrooms.csv")
+View(mushrooms)
+mushrooms$veil_type<- NULL
+table(mushrooms$type)
+```
+
+Allow our first oneR rule learner to consider all the possible features
+in hte mushroom data while constructing its rules to predict type
+```{r}
+mushroom_1R<- OneR(type ~ ., data = mushrooms)
+mushroom_1R
+summary(mushroom_1R)
+```
+
+Will return a RIPPER model object that can be used to make predictions
+```{r}
+mushroom_JRip<-JRip(type ~ ., data = mushrooms)
+mushroom_JRip
+```
+
+#Problem 3
+So far we have explored four different approaches to classification: kNN, Naive Bayes, C5.0 Decision Trees, and RIPPER Rules. Comment on the differences of the algorithms and when each is generally used. Provide examples of when they work well and when they do not work well. Add your comments to your R Notebook. Be specific and explicit; however, no code examples are needed.
+
+kNN:
+Nearest neighbor classifiers are defined by classifying 
+them by other similar classes.  The approach to classifying them is 
+done with the k-nearest neighbors algorithm/kNN which uses
+distance to measure similarity.  Its strengths are it is simple, 
+has a quick training phase, and does not make any assumptions about 
+the distribution.  It's weaknesses are that it doesn't produce a model, 
+the classification phase is slow, it requires an appropriate selection 
+of k, and nominal features and  missing data will require extra 
+processing. kNN is considered a lazy learning algorithm since no 
+abstraction occurs.  KNN can be used for predicting which way people
+will vote.
+
+Naive Bayes:
+Naive Bayes uses Bayesian methods.  It looks at probability being 
+between 0 and 1.  The closer it is to zero the lower the probability.  
+It can use the information and apply it over multiple trials.  
+Classifiers are applied to unlabeled data, and it uses the
+observed probabilities previously calculated using the training data
+to predict the most likely class for new features.  Bayesian 
+classifiers are used in problems when information needs to be 
+considered simultaneously eventhough the information is from different
+attributes.  It's able to use all the available evidence in changing 
+predictions.  Its strengths are it is simple, quick and effective. 
+It also does well when there is missing data or noise, and works well 
+with a large number of cases.  It's weaknesses are that it is not
+ideal when the data contains a lot of numeric features, it relies on
+the notion that the independent features are of equal importance, and
+the estimated probabilities are not as reliable as the predictions.
+Naive Bayes can be used for filtering through spam email.  It can also
+be used in gambling.
+
+C5.0 Decision Trees:
+Decision trees use choices that are split at each node across 
+different branches.  The C5.0 algorithm is one way to implement 
+decision trees.  Its strengths are that it works well on most 
+problems, can handle both numeric and nominal features, can
+handle missing data, can exclude features that are not important,
+is useful on both small and large datasets, is efficient, and 
+can produce a model that is easily interpreted.  It's weaknesses 
+are that over and underfitting can occur easily, is biased toward
+splits on features having a large number of levels, large changes can
+result from small changes, and large trees can be hard to interpret. 
+C5.0 uses entropy to split decision trees.  They are useful in 
+predicting future action, such as if someone will default on their loan.
+
+RIPPER Rules:
+Classification rules use an if-else logic to assign a class to 
+unlabeled examples.  Rule learners can be used in a way similar to
+decision tree learners.  The results can be more simple and direct than
+the results of decision trees.  RIPPER generates easy to read rules, and
+is efficient on datasets that are large and noisy.  However, the 
+resulting rules can go against expert knowledge and common sense, it 
+does not work well with numeric data and may not work as well as
+more complex models.  It can be used to predict whether movies will
+do well.  
+
+
+#Problem 4
+Much of our focus so far has been on building a single model that is most accurate. In practice, data scientists often construct multiple models and then combine them into a single prediction model. This is referred to as a model ensemble. Two common techniques for assembling such models are boosting and bagging. Do some research and define what model ensembles are, why they are important, and how boosting and bagging function in the construction of assemble models. Be detailed and provide references to your research. 
+
+A model ensemble is a prediction model comprised of a set of models.  Ensemble methods combine several decision trees to produce a better model than a single decision tree.  The idea behind it is that combining a group of weak learners can create a strong learner.  According to Kelleher, MacNamee and D'Arcy, the two defining characteristics of ensemble models 
+are that they build multiple different models from the same dataset by inducing each momdel using a modified version of the dataset; and they make predictions by aggregating the predictionso fthe differnt models in the ensemble.  Boosting and bagging are two approaches to creating model ensembles.  Boosting occurs when each new model added is biased to pay more attention to instances to models which were misclassified before.  It is done using a weighted dataset. It iteratively adds the models it creates to the ensemble.  Boosting supports different loss function and works well with interactions.  However, it is prone to overfitting and requires careful tuning of different parameters.  Bagging involves training each model on a random sample, resulting in each model being induced from each bootstrap sample.  Bagging works well with decision trees.  Random Forests is an extension of over bagging and handles data with high dimensions
+well.  However, it does not give precise values for the regression model.
+
+https://towardsdatascience.com/decision-tree-ensembles-bagging-and-boosting-266a8ba60fd9
+
